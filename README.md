@@ -1,65 +1,7 @@
 # NGCC-candidates
 
-Private mirror of **NGCC Round-1 candidate reference implementations and
-specification documents**, used by
-[Tongsuo-Project/NGCC-provider](https://github.com/Tongsuo-Project/NGCC-provider).
+NGCC (Next-Generation Cryptography Competition) is a global call for next-generation commercial cryptography algorithms, launched in 2025 by the Institute of Commercial Cryptography Standards (ICCS). The [notice on collecting next-generation public-key algorithm proposals](https://www.niccs.org.cn/symmbzyjy/tzgg/pc/content/1976155884915003392/content_1976155884915003392.html) officially published the submission requirements and evaluation criteria for public-key cryptographic algorithms and started accepting public-key algorithm proposals.
 
-## Layout
+This repository holds the reference implementations of NGCC public-key proposals (KEM and signature), including algorithm sources and specification documents from the submitted packages.
 
-| Path | Contents |
-|------|----------|
-| `kem-NN/`, `sign-NN/` | Per-scheme tree: **Reference Implementation** (byte-frozen) plus **Spec** docs |
-| `…/Implementations/` (or equivalent) | Submitter reference sources (`provenance/sources.sha256`) |
-| `…/Algorithm specifications/` (and variants) | Algorithm specification PDFs from Round-1 packages |
-| `…/中文资料/`, `Supporting Documentation/` | Extra non-IP docs when present in the package |
-| `provenance/` | Catalog, archive checksums, integration policy, Spec inventory |
-| `PROVENANCE.json` | Origin of this tree |
-
-**Not included:** harness / ABI glue (lives only in NGCC-provider), Test Vectors,
-Basic information / 算法基本信息 (signed forms), and pure Intellectual Property statement PDFs.
-
-## Policy
-
-- Author algorithm **Implementation** sources must remain unmodified.
-- Prefer author PRs into this repository for algorithm fixes; NGCC-provider should
-  consume a pinned commit/tag of this repo rather than editing trees in place.
-- Spec PDFs are taken from official NICCS Round-1 candidate packages (even when
-  the Implementation tree follows a later author revision).
-
-
-## Security levels
-
-This repository keeps **all Reference Implementation parameter sets** from the
-Round-1 submitter packages, including **512-bit** security levels (and NIST
-Level-5 / `*-III` sets where those correspond to 512-bit classical security).
-
-[NGCC-provider](https://github.com/Tongsuo-Project/NGCC-provider) still
-**integrates and tests only 128-bit and 256-bit** (plus selected 192-bit) levels;
-384/512 sources here are for archive completeness and are not wired into
-provider tests.
-
-Names that embed `512` as a **polynomial dimension** (e.g. `yuanyang-512`,
-`CTL-257-512`) are not necessarily 512-bit security—see the provider summary.
-
-## Source kinds
-
-See `provenance/source-catalog.json`:
-
-- `official-round-1-package` — NICCS / PKC forum Round-1 candidate zips
-  (`https://www.niccs.org.cn/.../Round 1 candidates/`).
-- `latest-author-revision` — later author packages, preferred for Implementation
-  when newer than the Round-1 zip.
-
-Spec inventory: `provenance/specs-from-round1.json`.
-
-## Integrity
-
-```sh
-# Verify every tracked author Implementation file against the frozen manifest
-while read -r hash path; do
-  echo "$hash  $path"
-done < provenance/sources.sha256 | sha256sum -c -
-```
-
-Migrated from `Tongsuo-Project/NGCC-provider` @ `1fa5763` (`ngcc/upstream/`,
-excluding `api/`). Spec documents added from Round-1 packages in a later commit.
+We keep author sources **bit-for-bit identical** to the originals and do not modify them. When newer author releases appear, we try to update this tree to match. Please open an issue if an implementation here is outdated, and include a link to the newer reference implementation when you have one.
