@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/Tongsuo-Project/NGCC-candidates",
+  "purpose": "NGCC Round-1 candidate reference implementations and specification documents (submitter materials). Harness/ABI glue lives in Tongsuo-Project/NGCC-provider, not here.",
+  "migrated_from": {
+    "repository": "https://github.com/Tongsuo-Project/NGCC-provider",
+    "commit": "1fa5763be1013586a09ae87a7c9f3151e014c6f8",
+    "path": "ngcc/upstream",
+    "excluded": [
+      "api/"
+    ]
+  },
+  "harness_lineage": {
+    "repository": "https://github.com/ngcc-dev/ngcc-harness",
+    "commit": "6a13c278a0cf7a6b4bcee9bc2494932898486c70",
+    "note": "ngcc-provider upstream was originally curated from this harness; algorithm sources come from submitter archives with later author revisions taking precedence."
+  },
+  "pkc_forum": {
+    "round1_packages_base": "https://www.niccs.org.cn/niccs/Proposal/Public-Key Cryptographic Algorithms/Round 1 candidates/",
+    "mailing_list_archives": "https://list.niccs.org.cn/archives/list/pkcforum@list.niccs.org.cn/",
+    "catalog": "provenance/source-catalog.json"
+  },
+  "specs": {
+    "added_from": "NICCS Round-1 candidate packages",
+    "inventory": "provenance/specs-from-round1.json",
+    "note": "Algorithm specifications / Basic information / 中文资料 / Supporting Documentation (non-IP). Implementation trees not modified.",
+    "excluded": [
+      "Intellectual property statement PDFs",
+      "Test_Vectors"
+    ]
+  }
+}

@@ -1,0 +1,803 @@
+{
+  "source": "NICCS Round-1 candidate packages (www.niccs.org.cn .../Round 1 candidates/)",
+  "policy": "Copied Algorithm specifications / Basic information / Supporting Documentation / 中文资料 from official Round-1 zips. Implementation trees untouched. Intellectual property statement PDFs/dirs omitted.",
+  "schemes_with_specs": 74,
+  "schemes_missing_specs": [],
+  "schemes_not_in_repo": [
+    "sign-29"
+  ],
+  "notes": {
+    "sign-29": "Tins withdrawn; no scheme directory in this repo (Spec exists in Round-1 zip under tins/)."
+  },
+  "total_spec_files": 269,
+  "total_spec_bytes": 152710398,
+  "entries": [
+    {
+      "id": "kem-01",
+      "n_files": 2,
+      "bytes": 2057212,
+      "files": [
+        "Basic information/01-算法基本信息：Aigis-Enc+.PDF",
+        "Algorithm specifications/02-算法文本：Aigis-Enc+.pdf"
+      ]
+    },
+    {
+      "id": "kem-02",
+      "n_files": 2,
+      "bytes": 906740,
+      "files": [
+        "Basic information/Basic information.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kem-03",
+      "n_files": 2,
+      "bytes": 1992579,
+      "files": [
+        "Basic information/Basic information.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kem-04",
+      "n_files": 2,
+      "bytes": 851489,
+      "files": [
+        "Basic information/Basic information.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kem-05",
+      "n_files": 2,
+      "bytes": 2866512,
+      "files": [
+        "Basic information/Basic Algorithm Information.pdf",
+        "Algorithm specifications/BIKE_MLThre.pdf"
+      ]
+    },
+    {
+      "id": "kem-06",
+      "n_files": 2,
+      "bytes": 752497,
+      "files": [
+        "Basic information/BRA-Basic Algorithm Information.pdf",
+        "Algorithm specifications/BRA-Documentation.pdf"
+      ]
+    },
+    {
+      "id": "kem-07",
+      "n_files": 2,
+      "bytes": 745769,
+      "files": [
+        "Basic information/BRQC-Basic Algorithm Information.pdf",
+        "Algorithm specifications/BRQC-Documentation.pdf"
+      ]
+    },
+    {
+      "id": "kem-08",
+      "n_files": 2,
+      "bytes": 1217740,
+      "files": [
+        "Basic information/Basic Algorithm Information.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kem-09",
+      "n_files": 2,
+      "bytes": 1239994,
+      "files": [
+        "中文资料/cheetah_KEM_cn.pdf",
+        "Algorithm specifications/cheetah_kem_en.pdf"
+      ]
+    },
+    {
+      "id": "kem-10",
+      "n_files": 2,
+      "bytes": 983001,
+      "files": [
+        "Basic information/C-Multi-UR-AG-Basic Algorithm Information.pdf",
+        "Algorithm specifications/C-Multi-UR-AG-Documentation.pdf"
+      ]
+    },
+    {
+      "id": "kem-11",
+      "n_files": 3,
+      "bytes": 3623509,
+      "files": [
+        "中文资料/COMPASS-KEM算法文本(cn).pdf",
+        "Basic information/COMPASS-KEM算法信息(en).pdf",
+        "Algorithm specifications/COMPASS-KEM算法文本(en).pdf"
+      ]
+    },
+    {
+      "id": "kem-12",
+      "n_files": 46,
+      "bytes": 7258072,
+      "files": [
+        "中文资料/逐光算法文本-中文.pdf",
+        "中文资料/算法基本信息-中文.pdf",
+        "Basic information/算法基本信息-英文.pdf",
+        "Algorithm specifications/逐光算法文本-英文.pdf",
+        "中文资料/密钥封装-CTL-x86-参考实现版/依赖说明.pdf",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估报告.pdf",
+        "中文资料/密钥封装-CTL-x86-优化实现版/依赖说明.pdf",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估报告.pdf",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/readme.txt",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-3329-2048/ctl_kem_kat_vectors.txt",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-3329-2048/benchmark_selfeval_ctl.c",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-3329-2048/ctl_kem_benchmark_raw.csv",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-3329-2048/ctl_kem_benchmark_summary.csv",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-3329-2048/test_kem_correctness_ctl.c",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-3329-2048/README_mingw_run.txt",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-257-512/ctl_kem_kat_vectors.txt",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-257-512/benchmark_selfeval_ctl.c",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-257-512/ctl_kem_benchmark_raw.csv",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-257-512/ctl_kem_benchmark_summary.csv",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-257-512/test_kem_correctness_ctl.c",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-257-512/README_mingw_run.txt",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-769-1024/ctl_kem_kat_vectors.txt",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-769-1024/benchmark_selfeval_ctl.c",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-769-1024/ctl_kem_benchmark_raw.csv",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-769-1024/ctl_kem_benchmark_summary.csv",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-769-1024/test_kem_correctness_ctl.c",
+        "中文资料/密钥封装-CTL-x86-优化实现版/自评估代码和数据/CTL-769-1024/README_mingw_run.txt",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/readme.txt",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-3329-2048/ctl_kem_kat_vectors.txt",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-3329-2048/benchmark_selfeval_ctl.c",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-3329-2048/ctl_kem_benchmark_raw.csv",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-3329-2048/ctl_kem_benchmark_summary.csv",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-3329-2048/test_kem_correctness_ctl.c",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-3329-2048/README_mingw_run.txt",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-257-512/ctl_kem_kat_vectors.txt",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-257-512/ctl_kem_benchmark_raw_.csv",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-257-512/benchmark_selfeval_ctl.c",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-257-512/ctl_kem_benchmark_summary.csv",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-257-512/test_kem_correctness_ctl.c",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-257-512/README_mingw_run.txt",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-769-1024/ctl_kem_kat_vectors.txt",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-769-1024/benchmark_selfeval_ctl.c",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-769-1024/ctl_kem_benchmark_raw.csv",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-769-1024/ctl_kem_benchmark_summary.csv",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-769-1024/test_kem_correctness_ctl.c",
+        "中文资料/密钥封装-CTL-x86-参考实现版/自评估代码和数据/CTL-769-1024/README_mingw_run.txt"
+      ]
+    },
+    {
+      "id": "kem-13",
+      "n_files": 2,
+      "bytes": 670138,
+      "files": [
+        "Basic information/DKEM-PKCKEM-380333-Appendix A - Basic Algorithm Information.pdf",
+        "Algorithm specifications/DKEM-PKCKEM-380333-Algorithm Specification.pdf"
+      ]
+    },
+    {
+      "id": "kem-14",
+      "n_files": 2,
+      "bytes": 868355,
+      "files": [
+        "Basic information/Basic Algorithm Information.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kem-15",
+      "n_files": 2,
+      "bytes": 939884,
+      "files": [
+        "Basic information/Basic Information.pdf",
+        "Algorithm specifications/Algorithm specification.pdf"
+      ]
+    },
+    {
+      "id": "kem-16",
+      "n_files": 1,
+      "bytes": 543023,
+      "files": [
+        "Algorithm specifications/HARE算法文档.pdf"
+      ]
+    },
+    {
+      "id": "kem-17",
+      "n_files": 3,
+      "bytes": 2904003,
+      "files": [
+        "中文资料/算法基本信息-中文.pdf",
+        "Basic information/算法基本信息-英文.pdf",
+        "Algorithm specifications/算法文本.pdf"
+      ]
+    },
+    {
+      "id": "kem-18",
+      "n_files": 2,
+      "bytes": 1453886,
+      "files": [
+        "中文资料/loong_kem_cn.pdf",
+        "Algorithm specifications/loong_kem_en.pdf"
+      ]
+    },
+    {
+      "id": "kem-19",
+      "n_files": 2,
+      "bytes": 1240212,
+      "files": [
+        "Basic information/Lore算法信息.pdf",
+        "Algorithm specifications/Lore算法文本.pdf"
+      ]
+    },
+    {
+      "id": "kem-20",
+      "n_files": 4,
+      "bytes": 1772942,
+      "files": [
+        "中文资料/附录A 算法基本信息.pdf",
+        "Basic information/Appendix A.pdf",
+        "Algorithm specifications/MAMBA_Frost_Doc.pdf",
+        "Algorithm specifications/MAMBA_Frost_SelfEval_Report.pdf"
+      ]
+    },
+    {
+      "id": "kem-21",
+      "n_files": 4,
+      "bytes": 1687957,
+      "files": [
+        "中文资料/附录A 算法基本信息.pdf",
+        "Basic information/Appendix A.pdf",
+        "Algorithm specifications/MAMBA_Viper_Doc.pdf",
+        "Algorithm specifications/MAMBA_Viper_SelfEval_Report.pdf"
+      ]
+    },
+    {
+      "id": "kem-22",
+      "n_files": 3,
+      "bytes": 2847904,
+      "files": [
+        "中文资料/Mithril_中文.pdf",
+        "Basic information/Basic information.pdf",
+        "Algorithm specifications/Mithril.pdf"
+      ]
+    },
+    {
+      "id": "kem-23",
+      "n_files": 4,
+      "bytes": 2610886,
+      "files": [
+        "中文资料/算法文本.pdf",
+        "中文资料/算法基本信息.pdf",
+        "Basic information/Basic Algorithm Information.pdf",
+        "Algorithm specifications/Algorithm Specification.pdf"
+      ]
+    },
+    {
+      "id": "kem-24",
+      "n_files": 2,
+      "bytes": 6336353,
+      "files": [
+        "Basic information/basic_information.pdf",
+        "Algorithm specifications/scabbard.pdf"
+      ]
+    },
+    {
+      "id": "kem-25",
+      "n_files": 2,
+      "bytes": 1972463,
+      "files": [
+        "Basic information/算法基本信息：NEV.PDF",
+        "Algorithm specifications/算法文本：NEV.pdf"
+      ]
+    },
+    {
+      "id": "kem-26",
+      "n_files": 3,
+      "bytes": 1055566,
+      "files": [
+        "中文资料/附录A-算法基本信息-中文版.pdf",
+        "Basic information/附录A-算法基本信息-英文版.pdf",
+        "Algorithm specifications/NSS-HQC算法文本.pdf"
+      ]
+    },
+    {
+      "id": "kem-27",
+      "n_files": 3,
+      "bytes": 848713,
+      "files": [
+        "中文资料/_NTRE密钥封装机制-算法基本信息.pdf",
+        "Basic information/NTRE.KEM-Basic Algorithm Information.pdf",
+        "Algorithm specifications/NTRE.KEM-Documentation.pdf"
+      ]
+    },
+    {
+      "id": "kem-28",
+      "n_files": 3,
+      "bytes": 737488,
+      "files": [
+        "Basic information/1 Basic Algorithm Information (OAEP-NTRU)-中文签名版本.pdf",
+        "Basic information/1 Basic Algorithm Information (OAEP-NTRU)-英文签名版本.pdf",
+        "Algorithm specifications/2算法文本（OAEP-NTRU）.pdf"
+      ]
+    },
+    {
+      "id": "kem-29",
+      "n_files": 38,
+      "bytes": 452801,
+      "files": [
+        "polar_kem_specification.md",
+        "polar_kem_parameters.png",
+        "polar_kem_security_analysis.md",
+        "Basic information/PolarKEM_01_Basic_Algorithm_Information.pdf",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_core.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_pack.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/Makefile",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_ct.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/drng.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/auxfunc.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_polar.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_core.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/auxfunc.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/KEM_AlgorithmInstance.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/drng.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/KEM_AlgorithmInstance.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_polar.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_pack.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/KAT_KEM.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_ct.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-256/polarkem_params.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_core.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_pack.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/Makefile",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_ct.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/drng.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/auxfunc.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_polar.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_core.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/auxfunc.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/KEM_AlgorithmInstance.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/drng.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/KEM_AlgorithmInstance.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_polar.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_pack.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/KAT_KEM.c",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_ct.h",
+        "Submission_Package/Implementations/Reference_Implementation/PolarKEM-128/polarkem_params.h"
+      ]
+    },
+    {
+      "id": "kem-30",
+      "n_files": 2,
+      "bytes": 2335725,
+      "files": [
+        "Basic information/算法基本信息.pdf",
+        "Algorithm specifications/算法文本.pdf"
+      ]
+    },
+    {
+      "id": "kem-31",
+      "n_files": 3,
+      "bytes": 3775114,
+      "files": [
+        "中文资料/2-算法文本(中文) .pdf",
+        "Basic information/1-算法基本信息.pdf",
+        "Algorithm specifications/2-算法文本(英文) .pdf"
+      ]
+    },
+    {
+      "id": "kem-32",
+      "n_files": 5,
+      "bytes": 5899950,
+      "files": [
+        "中文资料/Algorithm_Basic_Information_cn.pdf",
+        "中文资料/Intellectual_Property_Statement_cn.pdf",
+        "中文资料/Algorithm_Text_cn.pdf",
+        "Basic information/Algorithm_Basic_Information_en.pdf",
+        "Algorithm specifications/Algorithm_Text_en.pdf"
+      ]
+    },
+    {
+      "id": "kem-33",
+      "n_files": 2,
+      "bytes": 912283,
+      "files": [
+        "Basic information/Basic information.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kem-34",
+      "n_files": 2,
+      "bytes": 2972507,
+      "files": [
+        "Basic information/basic_information.pdf",
+        "Algorithm specifications/rudraksh2.pdf"
+      ]
+    },
+    {
+      "id": "kem-35",
+      "n_files": 1,
+      "bytes": 339791,
+      "files": [
+        "Algorithm specifications/Scloud+算法文本.pdf"
+      ]
+    },
+    {
+      "id": "kem-36",
+      "n_files": 1,
+      "bytes": 970800,
+      "files": [
+        "Algorithm specifications/TRIKE算法文档.pdf"
+      ]
+    },
+    {
+      "id": "kem-37",
+      "n_files": 2,
+      "bytes": 2285264,
+      "files": [
+        "Basic information/Basic information.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kem-38",
+      "n_files": 4,
+      "bytes": 2861260,
+      "files": [
+        "中文资料/UVW 密钥封装机制.pdf",
+        "中文资料/算法基本信息.pdf",
+        "Basic information/Basic Algorithm Information.pdf",
+        "Algorithm specifications/UVW-KEM.pdf"
+      ]
+    },
+    {
+      "id": "kem-39",
+      "n_files": 5,
+      "bytes": 1916853,
+      "files": [
+        "Basic information/KEM基本信息表英文.pdf",
+        "Algorithm specifications/Weaver算法设计说明书.pdf",
+        "中文资料/中文证明材料/KEM算法基本信息.pdf",
+        "中文资料/中文证明材料/算法文本-Weaver-密钥封装.pdf",
+        "中文资料/中文证明材料/算法基本信息-Weaver-密钥封装.pdf"
+      ]
+    },
+    {
+      "id": "kem-40",
+      "n_files": 2,
+      "bytes": 2847463,
+      "files": [
+        "Basic information/YuanYang.KEM算法基本信息.pdf",
+        "Algorithm specifications/YuanYang.KEM算法文本.pdf"
+      ]
+    },
+    {
+      "id": "kem-41",
+      "n_files": 2,
+      "bytes": 2636797,
+      "files": [
+        "Basic information/Appendix_A_Basic_Information.pdf",
+        "Algorithm specifications/Algorithm_specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-01",
+      "n_files": 2,
+      "bytes": 2348079,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-02",
+      "n_files": 2,
+      "bytes": 3115655,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-03",
+      "n_files": 3,
+      "bytes": 1138116,
+      "files": [
+        "Algorithm specifications.pdf",
+        "中文资料/算法基本信息-中文.pdf",
+        "Basic information/算法基本信息-英文.pdf"
+      ]
+    },
+    {
+      "id": "sign-04",
+      "n_files": 3,
+      "bytes": 1122127,
+      "files": [
+        "Algorithm specifications.pdf",
+        "中文资料/算法基本信息-中文.pdf",
+        "Basic information/算法基本信息-英文.pdf"
+      ]
+    },
+    {
+      "id": "sign-05",
+      "n_files": 2,
+      "bytes": 2189355,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-06",
+      "n_files": 3,
+      "bytes": 3680057,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf",
+        "中文资料/COMPASS-SIG算法文本(cn).pdf"
+      ]
+    },
+    {
+      "id": "sign-07",
+      "n_files": 3,
+      "bytes": 1751420,
+      "files": [
+        "中文资料/CS-中文.pdf",
+        "Basic information/Basic information.pdf",
+        "Algorithm specifications/CS.pdf"
+      ]
+    },
+    {
+      "id": "sign-08",
+      "n_files": 2,
+      "bytes": 932766,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specification.pdf"
+      ]
+    },
+    {
+      "id": "sign-09",
+      "n_files": 2,
+      "bytes": 774961,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-10",
+      "n_files": 2,
+      "bytes": 579789,
+      "files": [
+        "Basic Information.pdf",
+        "Algorithm Specification/algorithm-specification-facto-dsa.pdf"
+      ]
+    },
+    {
+      "id": "sign-11",
+      "n_files": 3,
+      "bytes": 1209658,
+      "files": [
+        "Algorithm specifications.pdf",
+        "中文资料/算法基本信息-中文.pdf",
+        "Basic information/算法基本信息-英文.pdf"
+      ]
+    },
+    {
+      "id": "sign-12",
+      "n_files": 2,
+      "bytes": 1627452,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-13",
+      "n_files": 4,
+      "bytes": 3592720,
+      "files": [
+        "中文资料/GreatWall_NGCC ICCS_基本信息（中英签字版）.pdf",
+        "Basic information/GreatWall_NGCC ICCS_基本信息（中英签字版）.pdf",
+        "Algorithm specifications/Clarification4GreatWall.pdf",
+        "Algorithm specifications/The GreatWall Signature Scheme.pdf"
+      ]
+    },
+    {
+      "id": "sign-14",
+      "n_files": 2,
+      "bytes": 1730666,
+      "files": [
+        "Algorithm specifications.pdf",
+        "Basic information.PDF"
+      ]
+    },
+    {
+      "id": "sign-15",
+      "n_files": 2,
+      "bytes": 3101069,
+      "files": [
+        "Basic_Information/basic_information.pdf",
+        "Algorithm_Specifications/DSA_ATLAS_Specification.pdf"
+      ]
+    },
+    {
+      "id": "sign-16",
+      "n_files": 3,
+      "bytes": 2931732,
+      "files": [
+        "中文资料/Octarine_中文.pdf",
+        "Basic information/Basic information.pdf",
+        "Algorithm Specifications/Octarine.pdf"
+      ]
+    },
+    {
+      "id": "sign-17",
+      "n_files": 2,
+      "bytes": 659762,
+      "files": [
+        "Algorithm specifications.pdf",
+        "Basic Algorithm Information.pdf"
+      ]
+    },
+    {
+      "id": "sign-18",
+      "n_files": 4,
+      "bytes": 3506882,
+      "files": [
+        "Basic information.pdf",
+        "中文资料/附录A-算法基本信息-中文.pdf",
+        "Algorithm specifications/Origami Algorithm specifications Appendix.pdf",
+        "Algorithm specifications/Origami Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-19",
+      "n_files": 3,
+      "bytes": 1575990,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications/Phoenix specifications.pdf",
+        "Algorithm specifications/Phoenix specifications Addition.pdf"
+      ]
+    },
+    {
+      "id": "sign-20",
+      "n_files": 3,
+      "bytes": 2104669,
+      "files": [
+        "Algorithm specifications.pdf",
+        "Basic Algorithm Information.pdf",
+        "中文资料/Basic information.pdf"
+      ]
+    },
+    {
+      "id": "sign-21",
+      "n_files": 3,
+      "bytes": 1810521,
+      "files": [
+        "Basic information.PDF",
+        "Algorithm specifications/Algorithm specifications Addition.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-22",
+      "n_files": 2,
+      "bytes": 1518701,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-23",
+      "n_files": 5,
+      "bytes": 2712154,
+      "files": [
+        "中文资料/签名算法基本信息表.pdf",
+        "Basic information/签名基本信息表英文版.pdf",
+        "Algorithm specifications/Shuttle 算法设计文档（V4）.pdf",
+        "中文资料/中文证明材料/算法文本.-Shuttle-数字签名pdf.pdf",
+        "中文资料/中文证明材料/算法基本信息-Shuttle-数字签名.pdf"
+      ]
+    },
+    {
+      "id": "sign-24",
+      "n_files": 2,
+      "bytes": 1497544,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-25",
+      "n_files": 3,
+      "bytes": 2598181,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications/SQISign2D2 Algorithm specifications.pdf",
+        "Algorithm specifications/SQISign Algorithm specifications Addition.pdf"
+      ]
+    },
+    {
+      "id": "sign-26",
+      "n_files": 3,
+      "bytes": 1884767,
+      "files": [
+        "Basic information/算法基本信息.pdf",
+        "Algorithm specifications/算法本文.pdf",
+        "Algorithm specifications/The Supplementary Statement on the Algorithm Parameters.pdf"
+      ]
+    },
+    {
+      "id": "sign-27",
+      "n_files": 3,
+      "bytes": 2398444,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications/SQIsignTriangle_Parameter_Sets_Note.pdf",
+        "Algorithm specifications/Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-28",
+      "n_files": 3,
+      "bytes": 5652409,
+      "files": [
+        "Basic Algorithm Information.pdf",
+        "Algorithm specifications/2-Algorithm specifications.pdf",
+        "Algorithm specifications/2-Algorithm specifications-Appendix-B.pdf"
+      ]
+    },
+    {
+      "id": "sign-30",
+      "n_files": 2,
+      "bytes": 1230438,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-31",
+      "n_files": 2,
+      "bytes": 865495,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "sign-32",
+      "n_files": 4,
+      "bytes": 2927088,
+      "files": [
+        "中文资料/UVW签名方案.pdf",
+        "中文资料/算法基本信息.pdf",
+        "Basic information/Basic Algorithm Information.pdf",
+        "Algorithm specifications/UVW Signature Scheme.pdf"
+      ]
+    },
+    {
+      "id": "sign-33",
+      "n_files": 3,
+      "bytes": 1740206,
+      "files": [
+        "Supporting Documentation/README.md",
+        "Specification/VDOO-Specifications.pdf",
+        "Basic_Information/basic_information.pdf"
+      ]
+    },
+    {
+      "id": "sign-34",
+      "n_files": 2,
+      "bytes": 3010030,
+      "files": [
+        "Basic information.pdf",
+        "Algorithm specifications.pdf"
+      ]
+    }
+  ]
+}
