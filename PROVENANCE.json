@@ -22,10 +22,15 @@
   "specs": {
     "added_from": "NICCS Round-1 candidate packages",
     "inventory": "provenance/specs-from-round1.json",
-    "note": "Algorithm specifications / Basic information / 中文资料 / Supporting Documentation (non-IP). Implementation trees not modified.",
+    "note": "Algorithm specifications / 中文资料 / Supporting Documentation (non-IP). Basic information / 算法基本信息 (incl. signed forms) are not kept. Implementation trees follow submitter package layout (not flattened).",
     "excluded": [
       "Intellectual property statement PDFs",
       "Test_Vectors"
     ]
+  },
+  "security_levels": {
+    "candidates_keeps": "All submitter Reference Implementation security levels present in Round-1 packages, including 512-bit (and NIST Level-5 / Aigis-*-III where that maps to 512 classical).",
+    "provider_tests": "NGCC-provider integrates and tests only 128-bit and 256-bit (plus select 192) security levels; 384/512 are kept here for archive completeness but are not tested in the provider.",
+    "note": "Parameter names containing 512 as a polynomial dimension (e.g. yuanyang-512, CTL-257-512, NEV_512_*) are not necessarily 512-bit security; see NGCC_PROPOSALS_SUMMARY in the provider."
   }
 }

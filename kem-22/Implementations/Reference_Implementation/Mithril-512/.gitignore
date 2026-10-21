@@ -1,0 +1,36 @@
+# Build outputs
+output/
+
+# Test binaries
+test/test_KEM128
+test/test_KEM256
+test/test_KEM512
+test/unit_tests_KEM128
+test/unit_tests_KEM256
+test/unit_tests_KEM512
+test/test_speed_KEM128
+test/test_speed_KEM256
+test/test_speed_KEM512
+test/profile_KEM*
+test/test_poly_mul*
+!test/test_poly_mul.c
+
+# KAT binaries
+KAT/KAT_KEM*
+!KAT/KAT_KEM.c
+
+# Local profiling / perf artifacts
+test/perf.data
+perf.data
+
+# Local generated / unpacked artifacts
+doc/
+docs/
+direct-awin-unpack.patch
+
+# Common object and dependency files
+*.o
+*.obj
+*.a
+*.so
+*.d

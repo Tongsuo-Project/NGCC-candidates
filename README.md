@@ -11,13 +11,12 @@ specification documents**, used by
 | `kem-NN/`, `sign-NN/` | Per-scheme tree: **Reference Implementation** (byte-frozen) plus **Spec** docs |
 | `…/Implementations/` (or equivalent) | Submitter reference sources (`provenance/sources.sha256`) |
 | `…/Algorithm specifications/` (and variants) | Algorithm specification PDFs from Round-1 packages |
-| `…/Basic information/` (and variants) | Basic algorithm information forms |
 | `…/中文资料/`, `Supporting Documentation/` | Extra non-IP docs when present in the package |
 | `provenance/` | Catalog, archive checksums, integration policy, Spec inventory |
 | `PROVENANCE.json` | Origin of this tree |
 
 **Not included:** harness / ABI glue (lives only in NGCC-provider), Test Vectors,
-and pure Intellectual Property statement PDFs.
+Basic information / 算法基本信息 (signed forms), and pure Intellectual Property statement PDFs.
 
 ## Policy
 
@@ -26,6 +25,21 @@ and pure Intellectual Property statement PDFs.
   consume a pinned commit/tag of this repo rather than editing trees in place.
 - Spec PDFs are taken from official NICCS Round-1 candidate packages (even when
   the Implementation tree follows a later author revision).
+
+
+## Security levels
+
+This repository keeps **all Reference Implementation parameter sets** from the
+Round-1 submitter packages, including **512-bit** security levels (and NIST
+Level-5 / `*-III` sets where those correspond to 512-bit classical security).
+
+[NGCC-provider](https://github.com/Tongsuo-Project/NGCC-provider) still
+**integrates and tests only 128-bit and 256-bit** (plus selected 192-bit) levels;
+384/512 sources here are for archive completeness and are not wired into
+provider tests.
+
+Names that embed `512` as a **polynomial dimension** (e.g. `yuanyang-512`,
+`CTL-257-512`) are not necessarily 512-bit security—see the provider summary.
 
 ## Source kinds
 

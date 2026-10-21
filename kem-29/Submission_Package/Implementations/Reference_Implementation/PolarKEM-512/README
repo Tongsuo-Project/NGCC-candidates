@@ -1,0 +1,80 @@
+PolarKEM-512 -- reference implementation
+=========================================
+
+Profile
+-------
+
+    Public key:     4096 bytes
+    Private key:    8192 bytes
+    Ciphertext:     2304 bytes
+    Shared secret:    64 bytes
+    Modulus q:     18433
+    Instance ID:    0x05
+    Quantization:      8 bits/coefficient
+
+This directory implements the fixed functional-evaluation profile described in
+the rectification report.  It activates only Construction D level 0, fixes all
+higher-level coefficients to zero, and does not use an NTT.  The exact signed
+permutation is deterministically expanded from the 32-byte public transform
+seed.  These choices are intended for reproducible implementation evaluation;
+the frozen submission paper and rectification report remain the normative
+sources for design rationale and security analysis.
+
+Contents
+--------
+
+KEM_AlgorithmInstance.c/h provides the official API_PKC interface.  KAT_KEM.c,
+auxfunc.c/h, and drng.c/h are byte-for-byte copies of the official API_PKC
+distribution.  polarkem_core.c/h implements KeyGen, encapsulation,
+decapsulation, serialization, full-ciphertext recomputation, and implicit
+rejection.  polarkem_polar.c/h contains the no-bit-reversal GF(2) Polar
+transform and deterministic signed permutation.  polarkem_pack.c/h contains
+coefficient quantization and bit packing.  polarkem_ct.c/h contains
+constant-time comparison and object-header validation.  polarkem_params.h fixes
+all instance dimensions and offsets.
+
+Build and run
+-------------
+
+POSIX/GNU-compatible make:
+
+    make clean all
+    make run
+    make sanitizer
+
+Windows with GCC on PATH:
+
+    build.bat
+    KAT_KEM.exe
+    build.bat sanitize
+    build.bat clean
+
+The strict build uses -std=c99 -Wall -Wextra -Wpedantic -Werror.  The official
+KAT writes ten populated records to output/KAT_KEM_PolarKEM-512.txt.
+
+In sanitizer builds, KAT_KEM.c and every project-owned translation unit receive
+full ASan/UBSan instrumentation.  The exact official auxfunc.c and drng.c also
+remain instrumented, with only the known shift check disabled because their
+upstream SM3 rotate macro contains a shift-by-32 expression.  The official
+files remain unmodified.
+
+Official API behavior
+---------------------
+
+The four length getters return the fixed byte lengths above.  kem_keygen,
+kem_enc, and kem_dec return 0 on success.  -1 is reserved for ciphertext
+rejection and still returns a full-length implicit-rejection shared secret.
+-2 reports a null pointer; -3 reports an incorrect caller-supplied input length
+or a non-canonical public/private-key serialization; and -4 reports a failure
+of the official DRNG, SM3, or pseudoXOF primitive.  Output lengths are zero on
+failure except for -1.
+
+Evaluation scope / 评估范围
+---------------------------
+
+This README records the instance parameters, implementation files, build
+procedure, and official API behavior.  Algorithm design rationale and security
+analysis are defined by the frozen submission paper and rectification report.
+
+本 README 说明实例参数、实现文件、构建方法和官方接口行为。算法设计依据与
+安全性分析以冻结的算法文本及整改说明为准。

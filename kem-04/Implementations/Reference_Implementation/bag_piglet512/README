@@ -1,0 +1,83 @@
+BAG-Piglet parameter-set implementation
+=======================================
+
+This directory is one self-contained BAG-Piglet security-strength instance.
+The directory name selects the parameter set, and the exact constants are
+defined in src/scheme/parameters.h. All tracked implementation and official
+KAT sources are compiled as C11.
+
+Directory layout
+----------------
+
+- CMakeLists.txt: C11 build configuration and target definitions
+- Makefile: convenience targets for CMake
+- doc/: Doxygen usage notes
+- lib/api_pkc/: official auxiliary functions and deterministic RNG
+- lib/randombytes/: operating-system random-byte interface
+- src/common/: CCA-KEM, PKE, Gabidulin, parsing, and polynomial code
+- src/scheme/: BAG-Piglet core operations and instance parameters
+- src/ffi/: pointer-based finite-field interface used by the scheme
+- src/rbc/: bundled RBC field, vector, space, polynomial, and quotient-ring code
+- src/kat/KAT_KEM.c: official KAT driver
+- src/kat/KEM_AlgorithmInstance.c/.h: permitted BAG-Piglet KAT adapter
+
+Official KAT build
+------------------
+
+The default Make target builds only the official KAT:
+
+    make
+
+The explicit equivalent is:
+
+    make kat
+
+The executable name is derived from this directory:
+
+    build/bin/<directory-name>-kat
+
+For example, in bag_piglet128:
+
+    ./build/bin/bag_piglet128-kat
+
+The program writes its result to output/KAT_KEM_<algorithm-instance>.txt.
+Expected vectors for all four security levels are stored in the repository's
+top-level Test_Vectors directory.
+
+Direct CMake build
+------------------
+
+To configure a formal build containing only the official KAT target:
+
+    cmake -S . -B build -DBAG_PIGLET_BUILD_LOCAL_TESTS=OFF
+    cmake --build build --target <directory-name>-kat -j
+
+Replace <directory-name> with bag_piglet128, bag_piglet256, bag_piglet384, or
+bag_piglet512.
+
+Local-only test programs
+------------------------
+
+A developer checkout may retain the following ignored files:
+
+- src/main_bag_piglet.c
+- src/main_benchmark.c
+- src/main_kat.c
+- src/common/kem_bag_piglet.c
+- src/common/kem_bag_piglet.h
+
+They are not part of the remote repository or the official KAT. When the
+functional and benchmark files exist locally, CMake discovers them and the
+following convenience targets are available:
+
+    make functional
+    make benchmark
+
+Official file boundary
+----------------------
+
+The official src/kat/KAT_KEM.c driver and lib/api_pkc files must remain
+unchanged. Scheme-specific lengths and calls are connected through
+src/kat/KEM_AlgorithmInstance.c/.h. The implementation uses bundled RBC
+arithmetic and does not require NTL or OpenSSL; pthread is the only linked
+system library beyond the C runtime.

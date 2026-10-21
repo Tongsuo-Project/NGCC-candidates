@@ -350,6 +350,86 @@
 !/sign-23/author-tools/verify_approx_log_poly.c
 
 
+# Restored 512-bit (and Level-5 / Aigis-*-III) Reference Implementation params from Round-1 packages.
+!/kem-01/Implementations/Reference_Implementation/Aigis-Enc+-III/**
+!/kem-03/Implementations/Reference_Implementation/Loong-Block-ms-512/**
+!/kem-04/Implementations/Reference_Implementation/bag_piglet512/**
+!/kem-06/Implementations/Reference_Implementation/BRA-512/**
+!/kem-07/Implementations/Reference_Implementation/BRQC-512/**
+!/kem-08/Implementations/Reference_Implementation/BW_KEM_C512/**
+!/kem-09/Implementations/Reference_Implementation/Cheetah512/**
+!/kem-10/Implementations/Reference_Implementation/CMultiURAG-512/**
+!/kem-11/Implementations and Test_Vectors/Implementations/Reference_Implementation/COMPASS-KEM-512/**
+!/kem-13/Implementations/Reference_Implementation/DKEM-512/**
+!/kem-15/Implementations/Reference_Implementation/FLIT512/**
+!/kem-16/Implementations and Test_Vectors/Implementations/Reference_Implementation/HARE-512/kr/**
+!/kem-18/Implementations/Reference_Implementation/Loong512/**
+!/kem-20/Implementations/Reference_Implementation/MAMBA-Frost-CC-512/**
+!/kem-20/Implementations/Reference_Implementation/MAMBA-Frost-512/**
+!/kem-21/Implementations/Reference_Implementation/MAMBA-Viper-512/**
+!/kem-22/Implementations/Reference_Implementation/Mithril-512/**
+!/kem-23/Implementations/Reference_Implementation/Mito-1-512/**
+!/kem-23/Implementations/Reference_Implementation/Mito-1-E-512/**
+!/kem-23/Implementations/Reference_Implementation/Mito-2-E-512/**
+!/kem-24/Implementations/Reference_Implementation/scabbard512/**
+!/kem-26/Implementations and Test_Vectors/Implementations/Reference_Implementation/HQC-512/**
+!/kem-27/Implementations/Reference_Implementation/NTRE-512/**
+!/kem-29/Submission_Package/Implementations/Reference_Implementation/PolarKEM-512/**
+!/kem-30/Implementations/Reference_Implementation/x86/POLARLAC-512/**
+!/kem-30/Implementations/Reference_Implementation/x86/POLARLAC-512-Star/**
+!/kem-32/Implementations/Reference_Implementation/QCTM512/**
+!/kem-33/Implementations/Reference_Implementation/qube-512/**
+!/kem-34/Implementations/Reference_Implementation/lwekem512/**
+!/kem-35/Implementations and Test_Vectors/Implementations/Reference_Implementation/Scloudplus-512/kem/**
+!/kem-37/Implementations/Reference_Implementation/TriQ-KEM-512/**
+!/kem-38/Implementations/Reference_Implementation/UVW-KEM-512/**
+!/kem-39/Implementations/Reference_Implementation/WeaverKEM-512/**
+!/kem-41/Implementations/Reference_Implementation/ZEN_512/**
+!/sign-01/Implementations/Implementations/Reference_Implementation/Aigis-Sig+-III/**
+!/sign-02/Implementations/Reference_Implementation/BiT-512/**
+!/sign-03/Implementations/Reference_Implementation/CEDRUSC-512f/**
+!/sign-03/Implementations/Reference_Implementation/CEDRUSC-512s/**
+!/sign-04/Implementations/Reference_Implementation/CEDRUSALPHA-512s/**
+!/sign-04/Implementations/Reference_Implementation/CEDRUSALPHA-512f/**
+!/sign-05/Implementations/Reference_Implementation/vistrutith_d3_512s/**
+!/sign-05/Implementations/Reference_Implementation/vistrutith_d3_512f/**
+!/sign-06/Implementations/Reference_Implementation/COMPASS-SIG-512/**
+!/sign-07/Implementations/Reference_Implementation/CS-512/**
+!/sign-08/Implementations/Reference_Implementation/DARTS512/**
+!/sign-10/Implementations and Test_Vectors/Implementations/Reference_Implementation/Facto-DSA-512/**
+!/sign-11/Implementations/Reference_Implementation/Flextree-512f/**
+!/sign-11/Implementations/Reference_Implementation/Flextree-512s/**
+!/sign-12/Implementations/Reference_Implementation/Galas-512F/**
+!/sign-12/Implementations/Reference_Implementation/Galas-512S/**
+!/sign-13/Implementations/Reference_Implementation/GreatWall512s/**
+!/sign-13/Implementations/Reference_Implementation/GreatWall512f/**
+!/sign-14/Implementations/Reference_Implementation/Lynxer-512f/**
+!/sign-14/Implementations/Reference_Implementation/Lynxer-512s/**
+!/sign-15/Implementation/Reference_Implementation/lwrdsa512/**
+!/sign-16/Implementations/Reference_Implementation/Octarine-512/**
+!/sign-17/Implementations and Test_Vectors/Implementations/Reference_Implementation/OPSsig-512/**
+!/sign-18/Implementations and Test_Vectors/Implementations/Reference_Implementation/Origami-512/**
+!/sign-19/Implementations and Test_Vectors/Implementations/Reference_Implementation/Phoenix-SM3-512f/**
+!/sign-19/Implementations and Test_Vectors/Implementations/Reference_Implementation/Phoenix-SHAKE-512f/**
+!/sign-19/Implementations and Test_Vectors/Implementations/Reference_Implementation/Phoenix-SM3-512s/**
+!/sign-19/Implementations and Test_Vectors/Implementations/Reference_Implementation/Phoenix-SHAKE-512s/**
+!/sign-20/Implementations and Test_Vectors/Implementations/Reference_Implementation/QingLuan-512/**
+!/sign-21/Implementations/Reference_Implementation/ReSolveD-alpha-512s/**
+!/sign-21/Implementations/Reference_Implementation/ReSolveD-alpha-512f/**
+!/sign-22/Implementations and Test_Vectors/Implementations/Reference_Implementation/Rhyme-SHAKE/Rhyme-SHAKE-512/**
+!/sign-22/Implementations and Test_Vectors/Implementations/Reference_Implementation/Rhyme-SM3/Rhyme-SM3-512/**
+!/sign-23/Implementation codes and test vectors/Shuttle 算法实现源代码及测试向量/Implementations/Reference_Implementation/SHUTTLE-512/**
+!/sign-24/Implementations/Reference_Implementation/Sigurd-512/**
+!/sign-25/Implementations/Reference_Implementation/SQISign2Dsquare-Level5-eff/**
+!/sign-25/Implementations/Reference_Implementation/SQISign2Dsquare-Level5-sec/**
+!/sign-28/Implementations/Reference_Implementation/sydo_512f/**
+!/sign-28/Implementations/Reference_Implementation/sydo_512s/**
+!/sign-30/Implementations/Reference_Implementation/TRINE-512-balanced/**
+!/sign-30/Implementations/Reference_Implementation/TRINE-512-ShortSig/**
+!/sign-32/Implementations/Reference_Implementation/UVW-512/**
+!/sign-33/Implementation/Reference_Implementation/vdoo_512/**
+!/sign-31/Implementations/Digital_Signature-TSUOV-x86-Reference_Implementation/API_PKC/Implementations/Reference_Implementation/TSUOV_512/**
+
 # Spec / Basic information / Chinese docs from Round-1 packages (not in sources.sha256).
 # Implementation allow-list above stays authoritative for author source bytes.
 !/*/Algorithm Specification/**

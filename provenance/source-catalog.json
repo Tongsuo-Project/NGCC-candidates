@@ -8,7 +8,8 @@
     "withdrawn": false,
     "parameters": [
       "Aigis-enc1",
-      "Aigis-enc2"
+      "Aigis-enc2",
+      "Aigis-Enc+-III"
     ],
     "archives": [
       {
@@ -45,7 +46,8 @@
     "withdrawn": false,
     "parameters": [
       "BAG-Loong-128",
-      "BAG-Loong-256"
+      "BAG-Loong-256",
+      "Loong-Block-ms-512"
     ],
     "archives": [
       {
@@ -63,7 +65,8 @@
     "withdrawn": false,
     "parameters": [
       "bag_piglet_128",
-      "bag_piglet_256"
+      "bag_piglet_256",
+      "bag_piglet512"
     ],
     "archives": [
       {
@@ -99,7 +102,8 @@
     "withdrawn": false,
     "parameters": [
       "BRA-128",
-      "BRA-256"
+      "BRA-256",
+      "BRA-512"
     ],
     "archives": [
       {
@@ -117,7 +121,8 @@
     "withdrawn": false,
     "parameters": [
       "BRQC-128",
-      "BRQC-256"
+      "BRQC-256",
+      "BRQC-512"
     ],
     "archives": [
       {
@@ -135,7 +140,8 @@
     "withdrawn": false,
     "parameters": [
       "BW_KEM_C128",
-      "BW_KEM_C256"
+      "BW_KEM_C256",
+      "BW_KEM_C512"
     ],
     "archives": [
       {
@@ -153,7 +159,8 @@
     "withdrawn": false,
     "parameters": [
       "Cheetah128",
-      "Cheetah256"
+      "Cheetah256",
+      "Cheetah512"
     ],
     "archives": [
       {
@@ -171,7 +178,8 @@
     "withdrawn": false,
     "parameters": [
       "CMultiURAG-128",
-      "CMultiURAG-256"
+      "CMultiURAG-256",
+      "CMultiURAG-512"
     ],
     "archives": [
       {
@@ -189,7 +197,8 @@
     "withdrawn": false,
     "parameters": [
       "COMPASS-KEM-128",
-      "COMPASS-KEM-256"
+      "COMPASS-KEM-256",
+      "COMPASS-KEM-512"
     ],
     "archives": [
       {
@@ -225,7 +234,8 @@
     "withdrawn": false,
     "parameters": [
       "DKEM-128",
-      "DKEM-256"
+      "DKEM-256",
+      "DKEM-512"
     ],
     "archives": [
       {
@@ -268,7 +278,8 @@
     "withdrawn": false,
     "parameters": [
       "FLIT128_REF",
-      "FLIT256_REF"
+      "FLIT256_REF",
+      "FLIT512"
     ],
     "archives": [
       {
@@ -286,7 +297,8 @@
     "withdrawn": false,
     "parameters": [
       "HARE-128-kr",
-      "HARE-256-kr"
+      "HARE-256-kr",
+      "HARE-512"
     ],
     "archives": [
       {
@@ -323,7 +335,8 @@
     "withdrawn": false,
     "parameters": [
       "Loong128",
-      "Loong256"
+      "Loong256",
+      "Loong512"
     ],
     "archives": [
       {
@@ -363,7 +376,9 @@
       "MAMBA-Frost-256",
       "MAMBA-Frost-CC-128",
       "MAMBA-Frost-CC-192",
-      "MAMBA-Frost-CC-256"
+      "MAMBA-Frost-CC-256",
+      "MAMBA-Frost-512",
+      "MAMBA-Frost-CC-512"
     ],
     "archives": [
       {
@@ -382,7 +397,8 @@
     "parameters": [
       "MAMBA-Viper-128",
       "MAMBA-Viper-192",
-      "MAMBA-Viper-256"
+      "MAMBA-Viper-256",
+      "MAMBA-Viper-512"
     ],
     "archives": [
       {
@@ -400,7 +416,8 @@
     "withdrawn": false,
     "parameters": [
       "Mithril-128",
-      "Mithril-256"
+      "Mithril-256",
+      "Mithril-512"
     ],
     "archives": [
       {
@@ -422,7 +439,10 @@
       "Mito-1-E-128",
       "Mito-1-E-256",
       "Mito-2-E-128",
-      "Mito-2-E-256"
+      "Mito-2-E-256",
+      "Mito-1-512",
+      "Mito-1-E-512",
+      "Mito-2-E-512"
     ],
     "archives": [
       {
@@ -440,7 +460,8 @@
     "withdrawn": false,
     "parameters": [
       "scabbard128",
-      "scabbard256"
+      "scabbard256",
+      "scabbard512"
     ],
     "archives": [
       {
@@ -482,7 +503,8 @@
     "withdrawn": false,
     "parameters": [
       "HQC-128",
-      "HQC-256"
+      "HQC-256",
+      "HQC-512"
     ],
     "archives": [
       {
@@ -500,7 +522,8 @@
     "withdrawn": false,
     "parameters": [
       "NTRE-128",
-      "NTRE-256"
+      "NTRE-256",
+      "NTRE-512"
     ],
     "archives": [
       {
@@ -536,7 +559,8 @@
     "withdrawn": false,
     "parameters": [
       "PolarKEM-128",
-      "PolarKEM-256"
+      "PolarKEM-256",
+      "PolarKEM-512"
     ],
     "archives": [
       {
@@ -555,7 +579,9 @@
     "parameters": [
       "POLARLAC-128",
       "POLARLAC-256",
-      "POLARLAC-Light"
+      "POLARLAC-Light",
+      "POLARLAC-512",
+      "POLARLAC-512-Star"
     ],
     "archives": [
       {
@@ -591,7 +617,8 @@
     "withdrawn": false,
     "parameters": [
       "QCTM128",
-      "QCTM256"
+      "QCTM256",
+      "QCTM512"
     ],
     "archives": [
       {
@@ -612,7 +639,8 @@
     "parameters": [
       "qube-128",
       "qube-192",
-      "qube-256"
+      "qube-256",
+      "qube-512"
     ],
     "archives": [
       {
@@ -630,7 +658,8 @@
     "withdrawn": false,
     "parameters": [
       "lwekem128",
-      "lwekem256"
+      "lwekem256",
+      "lwekem512"
     ],
     "archives": [
       {
@@ -652,7 +681,8 @@
       "Scloudplus-192-AES-packed10",
       "Scloudplus-192-SM3-packed10",
       "Scloudplus-256-AES-packed10",
-      "Scloudplus-256-SM3-packed10"
+      "Scloudplus-256-SM3-packed10",
+      "Scloudplus-512"
     ],
     "archives": [
       {
@@ -688,7 +718,8 @@
     "withdrawn": false,
     "parameters": [
       "TriQ-KEM-128",
-      "TriQ-KEM-256"
+      "TriQ-KEM-256",
+      "TriQ-KEM-512"
     ],
     "archives": [
       {
@@ -706,7 +737,8 @@
     "withdrawn": false,
     "parameters": [
       "UVW-KEM-128",
-      "UVW-KEM-256"
+      "UVW-KEM-256",
+      "UVW-KEM-512"
     ],
     "archives": [
       {
@@ -724,7 +756,8 @@
     "withdrawn": false,
     "parameters": [
       "WeaverKEM-128",
-      "WeaverKEM-256"
+      "WeaverKEM-256",
+      "WeaverKEM-512"
     ],
     "archives": [
       {
@@ -760,7 +793,8 @@
     "withdrawn": false,
     "parameters": [
       "ZEN_128",
-      "ZEN_256"
+      "ZEN_256",
+      "ZEN_512"
     ],
     "archives": [
       {
@@ -778,7 +812,8 @@
     "withdrawn": false,
     "parameters": [
       "Aigis-sig1",
-      "Aigis-sig2"
+      "Aigis-sig2",
+      "Aigis-Sig+-III"
     ],
     "archives": [
       {
@@ -796,7 +831,8 @@
     "withdrawn": false,
     "parameters": [
       "BiT-128",
-      "BiT-256"
+      "BiT-256",
+      "BiT-512"
     ],
     "archives": [
       {
@@ -816,7 +852,9 @@
       "CEDRUSC-160f",
       "CEDRUSC-160s",
       "CEDRUSC-256f",
-      "CEDRUSC-256s"
+      "CEDRUSC-256s",
+      "CEDRUSC-512f",
+      "CEDRUSC-512s"
     ],
     "archives": [
       {
@@ -837,7 +875,9 @@
       "CEDRUSALPHA-160f",
       "CEDRUSALPHA-160s",
       "CEDRUSALPHA-256f",
-      "CEDRUSALPHA-256s"
+      "CEDRUSALPHA-256s",
+      "CEDRUSALPHA-512f",
+      "CEDRUSALPHA-512s"
     ],
     "archives": [
       {
@@ -865,7 +905,9 @@
       "ublockith_d3_256f",
       "ublockith_d3_256s",
       "ublockith_em_d3_256f",
-      "ublockith_em_d3_256s"
+      "ublockith_em_d3_256s",
+      "vistrutith_d3_512f",
+      "vistrutith_d3_512s"
     ],
     "archives": [
       {
@@ -883,7 +925,8 @@
     "withdrawn": false,
     "parameters": [
       "COMPASS-SIG-128",
-      "COMPASS-SIG-256"
+      "COMPASS-SIG-256",
+      "COMPASS-SIG-512"
     ],
     "archives": [
       {
@@ -901,7 +944,8 @@
     "withdrawn": false,
     "parameters": [
       "CS-128",
-      "CS-256"
+      "CS-256",
+      "CS-512"
     ],
     "archives": [
       {
@@ -919,7 +963,8 @@
     "withdrawn": false,
     "parameters": [
       "DARTS128",
-      "DARTS256"
+      "DARTS256",
+      "DARTS512"
     ],
     "archives": [
       {
@@ -957,7 +1002,8 @@
     "withdrawn": false,
     "parameters": [
       "Facto-DSA-128",
-      "Facto-DSA-256"
+      "Facto-DSA-256",
+      "Facto-DSA-512"
     ],
     "archives": [
       {
@@ -977,7 +1023,9 @@
       "Flextree-160s",
       "Flextree-160f",
       "Flextree-256s",
-      "Flextree-256f"
+      "Flextree-256f",
+      "Flextree-512f",
+      "Flextree-512s"
     ],
     "archives": [
       {
@@ -997,7 +1045,9 @@
       "Galas-160S",
       "Galas-160F",
       "Galas-256S",
-      "Galas-256F"
+      "Galas-256F",
+      "Galas-512F",
+      "Galas-512S"
     ],
     "archives": [
       {
@@ -1021,7 +1071,9 @@
       "GreatWall192f",
       "GreatWall192s",
       "GreatWall256f",
-      "GreatWall256s"
+      "GreatWall256s",
+      "GreatWall512f",
+      "GreatWall512s"
     ],
     "archives": [
       {
@@ -1042,7 +1094,9 @@
       "Lynxer-160f",
       "Lynxer-160s",
       "Lynxer-256f",
-      "Lynxer-256s"
+      "Lynxer-256s",
+      "Lynxer-512f",
+      "Lynxer-512s"
     ],
     "archives": [
       {
@@ -1061,7 +1115,8 @@
     "parameters": [
       "lwrdsa128",
       "lwrdsa192",
-      "lwrdsa256"
+      "lwrdsa256",
+      "lwrdsa512"
     ],
     "archives": [
       {
@@ -1079,7 +1134,8 @@
     "withdrawn": false,
     "parameters": [
       "Octarine-128",
-      "Octarine-256"
+      "Octarine-256",
+      "Octarine-512"
     ],
     "archives": [
       {
@@ -1097,7 +1153,8 @@
     "withdrawn": false,
     "parameters": [
       "OPSsig-128",
-      "OPSsig-256"
+      "OPSsig-256",
+      "OPSsig-512"
     ],
     "archives": [
       {
@@ -1115,7 +1172,8 @@
     "withdrawn": false,
     "parameters": [
       "Origami-128",
-      "Origami-256"
+      "Origami-256",
+      "Origami-512"
     ],
     "archives": [
       {
@@ -1137,7 +1195,11 @@
       "Phoenix-SM3-192f",
       "Phoenix-SM3-192s",
       "Phoenix-SM3-256f",
-      "Phoenix-SM3-256s"
+      "Phoenix-SM3-256s",
+      "Phoenix-SHAKE-512f",
+      "Phoenix-SHAKE-512s",
+      "Phoenix-SM3-512f",
+      "Phoenix-SM3-512s"
     ],
     "archives": [
       {
@@ -1155,7 +1217,8 @@
     "withdrawn": false,
     "parameters": [
       "QingLuan-128",
-      "QingLuan-256"
+      "QingLuan-256",
+      "QingLuan-512"
     ],
     "archives": [
       {
@@ -1175,7 +1238,9 @@
       "ReSolveD-alpha-160f",
       "ReSolveD-alpha-160s",
       "ReSolveD-alpha-256f",
-      "ReSolveD-alpha-256s"
+      "ReSolveD-alpha-256s",
+      "ReSolveD-alpha-512f",
+      "ReSolveD-alpha-512s"
     ],
     "archives": [
       {
@@ -1193,7 +1258,9 @@
     "withdrawn": false,
     "parameters": [
       "Rhyme-SM3-128",
-      "Rhyme-SM3-256"
+      "Rhyme-SM3-256",
+      "Rhyme-SHAKE-512",
+      "Rhyme-SM3-512"
     ],
     "archives": [
       {
@@ -1211,7 +1278,8 @@
     "withdrawn": false,
     "parameters": [
       "SHUTTLE-128",
-      "SHUTTLE-256"
+      "SHUTTLE-256",
+      "SHUTTLE-512"
     ],
     "archives": [
       {
@@ -1230,7 +1298,8 @@
     "withdrawn": false,
     "parameters": [
       "Sigurd-128",
-      "Sigurd-256"
+      "Sigurd-256",
+      "Sigurd-512"
     ],
     "archives": [
       {
@@ -1259,7 +1328,9 @@
       "SQISign2Dsquare-Level3-eff_uncompressed",
       "SQISign2Dsquare-Level3-eff_compressed",
       "SQISign2Dsquare-Level3-sec_uncompressed",
-      "SQISign2Dsquare-Level3-sec_compressed"
+      "SQISign2Dsquare-Level3-sec_compressed",
+      "SQISign2Dsquare-Level5-eff",
+      "SQISign2Dsquare-Level5-sec"
     ],
     "archives": [
       {
@@ -1317,7 +1388,9 @@
       "sydo_160f",
       "sydo_160s",
       "sydo_256f",
-      "sydo_256s"
+      "sydo_256s",
+      "sydo_512f",
+      "sydo_512s"
     ],
     "archives": [
       {
@@ -1352,7 +1425,9 @@
       "TRINE-128-Balanced",
       "TRINE-256-Balanced",
       "TRINE-128-ShortSig",
-      "TRINE-256-ShortSig"
+      "TRINE-256-ShortSig",
+      "TRINE-512-ShortSig",
+      "TRINE-512-balanced"
     ],
     "archives": [
       {
@@ -1370,7 +1445,8 @@
     "withdrawn": false,
     "parameters": [
       "TSUOV_128",
-      "TSUOV_256"
+      "TSUOV_256",
+      "TSUOV_512"
     ],
     "archives": [
       {
@@ -1388,7 +1464,8 @@
     "withdrawn": false,
     "parameters": [
       "UVW-128",
-      "UVW-256"
+      "UVW-256",
+      "UVW-512"
     ],
     "archives": [
       {
@@ -1406,7 +1483,8 @@
     "withdrawn": false,
     "parameters": [
       "vdoo_128",
-      "vdoo_256"
+      "vdoo_256",
+      "vdoo_512"
     ],
     "archives": [
       {

@@ -1,0 +1,41 @@
+# Build outputs
+output/
+*/output/
+perf.data
+
+# Test binaries
+test/test_SIGN*
+test/unit_tests_SIGN*
+test/test_speed_SIGN*
+test/test_breakdown_SIGN*
+test/profile_SIGN*
+*/test/test_SIGN*
+*/test/unit_tests_SIGN*
+*/test/test_speed_SIGN*
+*/test/test_breakdown_SIGN*
+*/test/profile_SIGN*
+!test/test_SIGN.c
+!test/unit_tests_SIGN.c
+!test/test_speed_SIGN.c
+!test/test_breakdown_SIGN.c
+!*/test/test_SIGN.c
+!*/test/unit_tests_SIGN.c
+!*/test/test_speed_SIGN.c
+!*/test/test_breakdown_SIGN.c
+
+# KAT binaries and outputs
+KAT/KAT_SIGN*
+KAT/output/
+*/KAT/KAT_SIGN*
+*/KAT/output/
+
+# Common intermediate files
+*.o
+*.obj
+*.a
+*.so
+*.d
+
+# Editor and repository metadata
+.vscode/
+.git/

@@ -1,0 +1,67 @@
+SYDO reference instance: sydo_512f
+
+Directory layout:
+
+  Makefile
+    Builds the NGCC SIG_AlgorithmInstance wrapper, KAT generator, and benchmark.
+  SIG_AlgorithmInstance.c/.h
+    NGCC signature API wrapper for this instance.
+  src/
+    ISO C SYDO reference implementation sources.
+  lib/
+    NGCC auxiliary functions, DRNG, and BLAKE2 reference sources.
+  test/
+    Local KAT and benchmark drivers.
+
+Environment requirements:
+
+- POSIX-like environment with `make`.
+- ISO C compiler with C11 support.
+- `taskset` from util-linux is recommended for benchmark pinning on Linux.
+
+Build:
+
+  make clean
+  make CC=gcc
+
+Run benchmark on one CPU core:
+
+  taskset -c 0 ./bench
+
+The default benchmark build uses the x86/x86-64 TSC reader for real
+`*_cycles` and `*_mcycles` on x86/x86-64 machines. This is benchmark-only code
+in `test/bench.c`; it is not used by the SYDO reference algorithm
+implementation.
+
+Portable ISO C benchmark fallback:
+
+Use this fallback when building in a pure ISO C environment or on a platform
+without x86 TSC. It uses `clock()` for elapsed time and does not use
+instruction-set-specific cycle counters. In this mode `*_cycles` and
+`*_mcycles` are reported as 0 unless `BENCH_CPU_HZ` is supplied at compile
+time. `BENCH_CPU_HZ` is the CPU frequency in Hz and must be replaced with the
+measured or otherwise confirmed frequency of the benchmark machine, for example:
+
+  make clean
+  make CC=gcc CPPFLAGS_EXTRA="-DBENCH_PORTABLE_ISO_C -DBENCH_CPU_HZ=CPU_FREQUENCY_HZ"
+  taskset -c 0 ./bench
+
+For x86/x86-64 benchmark runs with real cycle counts, use the default build:
+
+  make clean
+  make CC=gcc
+  taskset -c 0 ./bench
+
+Generate test vectors:
+
+  ./kat_sig
+
+The KAT file is written to:
+
+  output/KAT_SIG_sydo_512f.txt
+
+Clean generated files:
+
+  make clean
+
+Copyright and third-party notices are listed in ../NOTICE.
