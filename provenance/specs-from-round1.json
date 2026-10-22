@@ -1,7 +1,7 @@
 {
   "source": "NICCS Round-1 candidate packages (www.niccs.org.cn .../Round 1 candidates/)",
   "policy": "Copied Algorithm specifications / Basic information / Supporting Documentation / 中文资料 from official Round-1 zips. Implementation trees untouched. Intellectual property statement PDFs/dirs omitted.",
-  "schemes_with_specs": 74,
+  "schemes_with_specs": 76,
   "schemes_missing_specs": [],
   "schemes_not_in_repo": [
     "sign-29"
@@ -9,8 +9,8 @@
   "notes": {
     "sign-29": "Tins withdrawn; no scheme directory in this repo (Spec exists in Round-1 zip under tins/)."
   },
-  "total_spec_files": 269,
-  "total_spec_bytes": 152710398,
+  "total_spec_files": 273,
+  "total_spec_bytes": 154352856,
   "entries": [
     {
       "id": "kem-01",
@@ -797,6 +797,24 @@
       "files": [
         "Basic information.pdf",
         "Algorithm specifications.pdf"
+      ]
+    },
+    {
+      "id": "kex-06",
+      "n_files": 3,
+      "bytes": 1333945,
+      "files": [
+        "Algorithm specifications/MAMBA-NIKE-Optimized-x86-Self-Evaluation.pdf",
+        "Algorithm specifications/MAMBA-NIKE-Reference-x86-Self-Evaluation.pdf",
+        "Algorithm specifications/MAMBA_NIKE.pdf"
+      ]
+    },
+    {
+      "id": "kex-08",
+      "n_files": 1,
+      "bytes": 308513,
+      "files": [
+        "Algorithm specifications/Algorithm specifications.pdf"
       ]
     }
   ]

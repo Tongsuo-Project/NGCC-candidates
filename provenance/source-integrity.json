@@ -301,6 +301,14 @@
     "aux_note_20260919/iccs_pkgs/YuanYang.DSA.zip": {
       "sha256": "1eb45f24ad8f7ff25db923479c6500f273aee8b2470d76339030fed8d96b5b31",
       "bytes": 19879383
+    },
+    "kex_round1/MAMBA-NIKE.zip": {
+      "sha256": "79b53ff726121ccb1ce970003c06b605e973c4e4f452dbe780e70cd4c40ca018",
+      "bytes": 10286525
+    },
+    "kex_round1/NIIKE.zip": {
+      "sha256": "4f79f9a62aed06db83f2965abcc42ca98ce5cc2128cebd15b50a46cfbb633dbe",
+      "bytes": 18829414
     }
   },
   "files": {
