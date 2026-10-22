@@ -487,3 +487,15 @@ id_ed25519
 *.swo
 *~
 !/*/Supporting_Documentations/**
+
+# Round-1 key exchange (KEX) candidates: kex-06 MAMBA-NIKE, kex-08 NIIKE (official Round-1 zips).
+!/kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-128/**
+!/kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-192/**
+!/kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-256/**
+!/kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-384/**
+!/kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-512/**
+!/kex-08/Implementations and Test_Vectors/Implementations/Reference_Implementation/**
+# Submitter build outputs shipped in the zip (binary, KAT output); not sources.
+/kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-128/KAT_KEX
+/kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-128/output/
+/kex-06/Implementations/Reference_Implementation/*/*.o

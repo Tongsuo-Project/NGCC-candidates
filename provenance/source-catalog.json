@@ -1510,5 +1510,45 @@
         "sha256": "1eb45f24ad8f7ff25db923479c6500f273aee8b2470d76339030fed8d96b5b31"
       }
     ]
+  },
+  {
+    "id": "kex-06",
+    "name": "MAMBA-NIKE",
+    "source_checked_date": "2026-10-22",
+    "source_url": "https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/MAMBA-NIKE.zip",
+    "source_kind": "official-round-1-package",
+    "withdrawn": false,
+    "parameters": [
+      "MAMBA-NIKE-128",
+      "MAMBA-NIKE-192",
+      "MAMBA-NIKE-256",
+      "MAMBA-NIKE-384",
+      "MAMBA-NIKE-512"
+    ],
+    "archives": [
+      {
+        "path": "MAMBA-NIKE.zip",
+        "sha256": "79b53ff726121ccb1ce970003c06b605e973c4e4f452dbe780e70cd4c40ca018"
+      }
+    ]
+  },
+  {
+    "id": "kex-08",
+    "name": "NIIKE",
+    "source_checked_date": "2026-10-22",
+    "source_url": "https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/NIIKE.zip",
+    "source_kind": "official-round-1-package",
+    "withdrawn": false,
+    "parameters": [
+      "NIIKE-lv128",
+      "NIIKE-lv256",
+      "NIIKE-lv512"
+    ],
+    "archives": [
+      {
+        "path": "NIIKE.zip",
+        "sha256": "4f79f9a62aed06db83f2965abcc42ca98ce5cc2128cebd15b50a46cfbb633dbe"
+      }
+    ]
   }
 ]
