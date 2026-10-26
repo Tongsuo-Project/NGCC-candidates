@@ -17,7 +17,8 @@
   "pkc_forum": {
     "round1_packages_base": "https://www.niccs.org.cn/niccs/Proposal/Public-Key Cryptographic Algorithms/Round 1 candidates/",
     "mailing_list_archives": "https://list.niccs.org.cn/archives/list/pkcforum@list.niccs.org.cn/",
-    "catalog": "provenance/source-catalog.json"
+    "catalog": "provenance/source-catalog.json",
+    "readme": "README.md#source-provenance"
   },
   "specs": {
     "added_from": "NICCS Round-1 candidate packages",
