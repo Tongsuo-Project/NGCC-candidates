@@ -5,6 +5,8 @@
 
 #ifdef USE_RDPMC /* Needs echo 2 > /sys/devices/cpu/rdpmc */
 
+#define CPUCYCLES_UNIT "core cycles"
+
 static inline uint64_t cpucycles(void) {
     const uint32_t ecx = (1U << 30) + 1;
     uint64_t result;
@@ -18,6 +20,8 @@ static inline uint64_t cpucycles(void) {
 }
 
 #else
+
+#define CPUCYCLES_UNIT "TSC ticks"
 
 static inline uint64_t cpucycles(void) {
     uint64_t result;

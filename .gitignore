@@ -122,6 +122,8 @@
 !/kem-40/Implementations/Reference_Implementation/yuanyang-512/**
 !/kem-41/Implementations/Reference_Implementation/ZEN_128/**
 !/kem-41/Implementations/Reference_Implementation/ZEN_256/**
+!/kem-41/Implementations/Optimized_Implementation/x86AVX2/ZEN_128/**
+!/kem-41/Implementations/Optimized_Implementation/x86AVX2/ZEN_256/**
 !/sign-01/Implementations/Implementations/Reference_Implementation/Aigis-Sig+-I/**
 !/sign-01/Implementations/Implementations/Reference_Implementation/Aigis-Sig+-II/**
 !/sign-02/Implementations/Reference_Implementation/BiT-128/**
@@ -152,6 +154,12 @@
 !/sign-07/Implementations/Reference_Implementation/CS-256/**
 !/sign-08/Implementations/Reference_Implementation/DARTS128/**
 !/sign-08/Implementations/Reference_Implementation/DARTS256/**
+!/sign-08/Implementations/Optimized_Implementation/DARTS_AVX2/DARTS128/**
+!/sign-08/Implementations/Optimized_Implementation/DARTS_AVX2/DARTS256/**
+!/sign-08/Implementations/Optimized_Implementation/DARTS_neon/DARTS128/**
+!/sign-08/Implementations/Optimized_Implementation/DARTS_neon/DARTS256/**
+!/sign-08/Implementations/Third Party License/**
+!/sign-08/Implementations/README.md
 !/sign-10/Implementations and Test_Vectors/Implementations/Reference_Implementation/Facto-DSA-128/**
 !/sign-10/Implementations and Test_Vectors/Implementations/Reference_Implementation/Facto-DSA-256/**
 !/sign-11/Implementations/Reference_Implementation/Flextree-160f/**
@@ -385,6 +393,7 @@
 !/kem-38/Implementations/Reference_Implementation/UVW-KEM-512/**
 !/kem-39/Implementations/Reference_Implementation/WeaverKEM-512/**
 !/kem-41/Implementations/Reference_Implementation/ZEN_512/**
+!/kem-41/Implementations/Optimized_Implementation/x86AVX2/ZEN_512/**
 !/sign-01/Implementations/Implementations/Reference_Implementation/Aigis-Sig+-III/**
 !/sign-02/Implementations/Reference_Implementation/BiT-512/**
 !/sign-03/Implementations/Reference_Implementation/CEDRUSC-512f/**
@@ -396,6 +405,8 @@
 !/sign-06/Implementations/Reference_Implementation/COMPASS-SIG-512/**
 !/sign-07/Implementations/Reference_Implementation/CS-512/**
 !/sign-08/Implementations/Reference_Implementation/DARTS512/**
+!/sign-08/Implementations/Optimized_Implementation/DARTS_AVX2/DARTS512/**
+!/sign-08/Implementations/Optimized_Implementation/DARTS_neon/DARTS512/**
 !/sign-10/Implementations and Test_Vectors/Implementations/Reference_Implementation/Facto-DSA-512/**
 !/sign-11/Implementations/Reference_Implementation/Flextree-512f/**
 !/sign-11/Implementations/Reference_Implementation/Flextree-512s/**
@@ -499,3 +510,9 @@ id_ed25519
 /kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-128/KAT_KEX
 /kex-06/Implementations/Reference_Implementation/MAMBA-NIKE-128/output/
 /kex-06/Implementations/Reference_Implementation/*/*.o
+# Stored author-revision archives recorded in provenance/source-catalog.json.
+!/ngcc_provider/
+!/ngcc_provider/ngcc/
+!/ngcc_provider/ngcc/metadata/
+!/ngcc_provider/ngcc/metadata/kem-41-revision.zip
+!/ngcc_provider/ngcc/metadata/sign-08-revision.zip

@@ -71,7 +71,7 @@ The tree currently has **76** scheme directories (41 KEM, 33 signature, 2 key ex
 | `kem-38` | UVW-KEM | Official Round-1 package | [UVW-KEM.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/UVW-KEM.zip) | 2026-10-20 | `f9a1b135ea16` |
 | `kem-39` | Weaver | Latest author revision | [GitHub tree 09369c281856](https://github.com/Akutamatsu/weaverkem/tree/09369c28185641d6d7ad044252b536d977d9a4ae) | 2026-10-20 | `5409ec043d48` |
 | `kem-40` | YuanYang.KEM | Official Round-1 package | [YuanYang.KEM.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/YuanYang.KEM.zip) | 2026-10-20 | `fe1bf3d78272` |
-| `kem-41` | ZEN | Official Round-1 package | [ZEN.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/ZEN.zip) | 2026-10-20 | `69eba070320f` |
+| `kem-41` | ZEN | Latest author revision | [ZEN-20261030.zip](https://light-lattice.org/zen/implementations/20261030/ZEN-20261030.zip) | 2026-10-31 | `fb0933c53698` |
 
 `kem-32` (QCTM) stays on the official Round-1 ZIP. The catalog notes a 2026-10-08 team announcement of a revision; as of the 2026-10-21 catalog check, no downloadable revised source was found and the official package hash was unchanged. This tree is that official package, not an announced revision.
 
@@ -86,7 +86,7 @@ The tree currently has **76** scheme directories (41 KEM, 33 signature, 2 key ex
 | `sign-05` | Chinith | Official Round-1 package | [Chinith.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/Chinith.zip) | 2026-10-20 | `4d31ba3fe871` |
 | `sign-06` | COMPASS-SIG | Official Round-1 package | [COMPASS-SIG.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/COMPASS-SIG.zip) | 2026-10-20 | `ce88066506fe` |
 | `sign-07` | CS | Official Round-1 package | [CS.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/CS.zip) | 2026-10-20 | `c790d31cd4a2` |
-| `sign-08` | DARTS | Official Round-1 package | [DARTS.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/DARTS.zip) | 2026-10-20 | `1846cfe63f0c` |
+| `sign-08` | DARTS | Latest author revision | [GitHub commit 98687cf6910c](https://github.com/MathEternal/DARTS-NGCC/commit/98687cf6910c1409d188464c9ceff69cbf409cc4) | 2026-10-31 | `6974090d6b1c` |
 | `sign-09` | DOVE | Official Round-1 package | [DOVE.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/DOVE.zip) | 2026-10-20 | `19169e545f6a` |
 | `sign-10` | Facto-DSA | Official Round-1 package | [Facto-DSA.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/Facto-DSA.zip) | 2026-10-20 | `b3de38fcc2d9` |
 | `sign-11` | Flextree | Official Round-1 package | [Flextree.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/Flextree.zip) | 2026-10-20 | `f31d434ac297` |

@@ -99,7 +99,7 @@ void poly_unpack_lowbits(poly *r, const uint8_t *a);
 
 // 多项式的采样
 #define poly_challenge DARTS_NAMESPACE(poly_challenge) // 生成 Challenge 多项式
-void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTES], const uint8_t mu[CRHBYTES]);
+void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTES], const uint8_t mu[MUBYTES]);
 
 #define poly_uniform DARTS_NAMESPACE(poly_uniform) // 生成均匀分布多项式
 void poly_uniform(poly *a, const uint8_t seed[SEEDBYTES], uint16_t nonce);

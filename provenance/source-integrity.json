@@ -170,6 +170,10 @@
       "sha256": "69eba070320fc6cb365fb6d43d2b74460487732aeb7e607fac2d6c1b3a64a80e",
       "bytes": 37391107
     },
+    "ngcc_provider/ngcc/metadata/kem-41-revision.zip": {
+      "sha256": "fb0933c53698d3b49668c2266161b8a02d38d4cc956644bbd823b7b108c1cc44",
+      "bytes": 1238138
+    },
     "nsm_provider/ngcc/metadata/sign-01-revision.zip": {
       "sha256": "0b135bc02513b453d048d38b7ff0587e25f423e5a7cf8fbc6800d5465a7b401f",
       "bytes": 7089739
@@ -201,6 +205,10 @@
     "aux_note_20260919/iccs_pkgs/DARTS.zip": {
       "sha256": "1846cfe63f0cef83e2e0ca21f5dcadce3c4b16da33713957be6d156e2a9e6e95",
       "bytes": 13212635
+    },
+    "ngcc_provider/ngcc/metadata/sign-08-revision.zip": {
+      "sha256": "6974090d6b1c709391376b0a651291c51ccf3618fa280a1859ed5e55c1515198",
+      "bytes": 13416342
     },
     "aux_note_20260919/iccs_pkgs/DOVE.zip": {
       "sha256": "19169e545f6a6fd90b844b0deb72db81b5eb73c136873d1dae113c2c39d1c6e0",

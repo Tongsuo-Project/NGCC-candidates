@@ -17,9 +17,10 @@ SOURCES  = $(SIGN_SRC) $(SYM_SRC) $(ICCS_SRC) $(KAT_SRC)
 
 # ---------- test directory ----------
 TEST_DIR = test
+RANS_TEST_SRC = ../DARTS128/precomputations_rANS/test_rANS.c
 
 # ---------- targets ----------
-.PHONY: all test KAT clean
+.PHONY: all test KAT rans-stat clean
 
 BIN_DIR = bin
 
@@ -45,6 +46,12 @@ $(BIN_DIR)/test_DARTS: $(TEST_DIR)/test_DARTS.c $(SOURCES) | $(BIN_DIR)
 
 $(BIN_DIR)/test_speed: $(TEST_DIR)/test_speed.c $(TEST_DIR)/cpucycles.c $(TEST_DIR)/speed_print.c $(SOURCES) | $(BIN_DIR)
 	$(CC) $(CFLAGS) -o $@ $(TEST_DIR)/test_speed.c $(TEST_DIR)/cpucycles.c $(TEST_DIR)/speed_print.c $(SOURCES) -lm
+
+# ===================== make rANS statistics =====================
+rans-stat: $(BIN_DIR)/test_rANS
+
+$(BIN_DIR)/test_rANS: $(RANS_TEST_SRC) $(SIGN_SRC) $(SYM_SRC) $(ICCS_SRC) | $(BIN_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -I. -o $@ $(RANS_TEST_SRC) $(SIGN_SRC) $(SYM_SRC) $(ICCS_SRC) -lm
 
 # ===================== clean =====================
 clean:
