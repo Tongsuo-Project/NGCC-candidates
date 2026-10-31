@@ -41,22 +41,22 @@ extern "C"
     /// @param[out] a Base address of output polynomial coefficient array
     /// @param[in] seed Base address of input seed byte array
     /// @param[in] nonce Domain-separation nonce used for pseudorandom generation
-    /// @return None
-    void poly_generate_g(int16_t *a, const uint8_t *seed, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int poly_generate_g(int16_t *a, const uint8_t *seed, uint8_t nonce);
 
     /// @brief Generate a polynomial f from a seed and nonce
     /// @param[out] a Base address of output polynomial coefficient array
     /// @param[in] seed Base address of input seed byte array
     /// @param[in] nonce Domain-separation nonce used for pseudorandom generation
-    /// @return None
-    void poly_generate_f(int16_t *a, const uint8_t *seed, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int poly_generate_f(int16_t *a, const uint8_t *seed, uint8_t nonce);
 
     /// @brief Generate a small polynomial s or e from a seed and nonce
     /// @param[out] a Base address of output polynomial coefficient array
     /// @param[in] seed Base address of input seed byte array
     /// @param[in] nonce Domain-separation nonce used for pseudorandom generation
-    /// @return None
-    void poly_generate_se(int16_t *a, const uint8_t *seed, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int poly_generate_se(int16_t *a, const uint8_t *seed, uint8_t nonce);
 
     /// @brief Pack a binary polynomial coefficient array into a byte array
     /// @param[out] pa Base address of output packed byte array

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 
 #define SCALE_BITS 10
@@ -34,12 +35,9 @@ static const uint32_t f_hb_z1[11] = {334, 237, 89, 17, 1, 1, 1, 1, 17, 89, 237};
 // 映射: -7到7 -> 0到14, -511到-506 -> 15到20, 506到511 -> 21到26
 #define M_H 27 // Alphabet size for h
 static const uint32_t f_h[M_H] = {
-    // -7到7 (符号0-14)
-    1, 1, 1, 8, 37, 111, 215, 261, 216, 112, 38, 8, 1, 1, 1,
-    // -511到-506 (符号15-20)
-    1, 1, 1, 1, 1, 1,
-    // 506到511 (符号21-26)
-    1, 1, 1, 1, 1, 1
+    1, 1, 1, 8, 38, 112, 215, 261, 215, 111, 38, 8,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1
 };
 
 // 映射: 0到6 -> 0到6, 506到511 -> 7到12
@@ -220,16 +218,36 @@ void precomputations_rans() {
     decode_symbols(dsyms_hb_z1, symbol_hb_z1, f_hb_z1, M_HB_Z1);
 }
 
+static int valid_frequency_table(const uint32_t *freq, size_t alphabet_size) {
+    uint32_t sum = 0;
+
+    for (size_t i = 0; i < alphabet_size; i++) {
+        if (freq[i] == 0 || freq[i] > SCALE - sum) {
+            return 0;
+        }
+        sum += freq[i];
+    }
+    return sum == SCALE;
+}
 
 void print_esym(RansEncSymbol x){
-    printf("{%i, %i, %i, %i, %i}", x.x_max, x.rcp_freq, x.bias, x.cmpl_freq, x.rcp_shift);
+    printf("{%" PRIu32 ", %" PRIu32 ", %" PRIu32 ", %u, %u}",
+           x.x_max, x.rcp_freq, x.bias,
+           (unsigned int)x.cmpl_freq, (unsigned int)x.rcp_shift);
 }
 
 void print_dsym(RansDecSymbol x){
-    printf("{%i, %i}", x.start, x.freq);
+    printf("{%u, %u}", (unsigned int)x.start, (unsigned int)x.freq);
 }
 
-int main() {
+int main(void) {
+    if (!valid_frequency_table(f_h, M_H) ||
+        !valid_frequency_table(f_hb_z1, M_HB_Z1)) {
+        fprintf(stderr, "rANS frequencies must be positive and sum to %u\n",
+                SCALE);
+        return 1;
+    }
+
     precomputations_rans();
 
     printf("\n");
@@ -251,7 +269,7 @@ int main() {
 
     printf("static uint16_t symbol_h[SCALE] = {");
     for(int i=0; i< (int)SCALE; i++) {
-        printf("%i, ", symbol_h[i]);
+        printf("%u, ", (unsigned int)symbol_h[i]);
     }
     printf("};\n");
 
@@ -272,9 +290,10 @@ int main() {
 
     printf("static uint16_t symbol_hb_z1[SCALE] = {");
     for(int i=0; i< (int)SCALE; i++) {
-        printf("%i, ", symbol_hb_z1[i]);
+        printf("%u, ", (unsigned int)symbol_hb_z1[i]);
     }
     printf("};\n");
 
     printf("\n");
+    return 0;
 }

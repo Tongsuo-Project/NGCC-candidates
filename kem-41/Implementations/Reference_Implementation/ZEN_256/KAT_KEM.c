@@ -63,7 +63,8 @@ int main()
 	{
 		memcpy(nonce + 4 * i, "seed", 4);
 	}
-	init_random_number(&drng_seed, nonce, SEED_LEN_BYTES);
+	if (init_random_number(&drng_seed, nonce, SEED_LEN_BYTES) != 0)
+	    return EXIT_FAILURE;
 	// open KAT_KEM_AlgorithmInstance.txt
 	const char *dir_name = "output";
 	char file_path[128] = "";
@@ -95,14 +96,16 @@ int main()
 	{
 		fprintf(file_output, "Count = %d\n", i);
 		// generate seed using drng_seed
-		get_random_number(&drng_seed, seed, SEED_LEN_BYTES * 8);
+		if (get_random_number(&drng_seed, seed, SEED_LEN_BYTES * 8) != 0)
+		    return EXIT_FAILURE;
 		// print seed
 		fprintf(file_output, "Seed_Len = %d\n", SEED_LEN_BYTES);
 		fprintstr(file_output, "Seed = ", seed, SEED_LEN_BYTES);
 
 		/****************the KEM scheme starts here****************/
 		// init drng_algorithm using seed
-		init_random_number(&drng_algorithm, seed, SEED_LEN_BYTES);
+		if (init_random_number(&drng_algorithm, seed, SEED_LEN_BYTES) != 0)
+		    return EXIT_FAILURE;
 
 		/****************       Key generate       ****************/
 		rtn = kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes);

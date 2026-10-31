@@ -99,6 +99,32 @@ KEX_AlgorithmInstance.h     Header file of KEX protocol (programming interface)
     The command "make KAT_KEM" builds the known-answer-test executable.
     The command "make SPEED_KEM" builds the speed-test executable.
 
+    Build profiles (applies to both KAT_KEM and SPEED_KEM):
+
+    The default profile is "performance". It uses Clang with
+    -O3 -march=native -fomit-frame-pointer to pursue the highest
+    performance on the build machine. Select it explicitly with:
+
+        make BUILD=performance KAT_KEM SPEED_KEM
+
+    Omitting BUILD also selects performance. To use the GCC-based
+    NGCC profile instead, run:
+
+        make BUILD=ngcc KAT_KEM SPEED_KEM
+
+    The ngcc profile uses -std=c99 -Wpedantic -Wall -Wextra -O2.
+
+    Switching BUILD automatically rebuilds the requested executables.
+    Each executable tracks its own profile; unchanged profiles do not
+    force a rebuild.
+    The executable names and run commands below are unchanged.
+
+    Install Clang for performance builds and GCC for ngcc builds.
+    Performance binaries may use CPU-specific instructions, including
+    in the portable C implementation. Run them only on compatible CPUs;
+    build on the intended target machine for local performance tests.
+    Actual performance depends on the CPU and compiler version.
+
 3.  Run
 
     To run the known-answer test, execute:
@@ -124,5 +150,12 @@ KEX_AlgorithmInstance.h     Header file of KEX protocol (programming interface)
     This is a portable C implementation and does not require AVX2-specific
     instructions.
 
-    End of additional usage notes.
+    Error handling: check KEM, PKE key-generation and PKE encryption
+    return values before using outputs.
+    Internal failures return ZEN_ERR_INTERNAL (-4) from KEM, clear output
+    buffers, and set output lengths to zero. PKE key generation/encryption
+    return nonzero on failure and leave outputs unchanged. Key generation
+    stops before reusing any of its 256 sampling nonces. Invalid ciphertexts
+    continue to use implicit rejection. Successful KAT outputs are unchanged.
 
+    End of additional usage notes.

@@ -34,146 +34,180 @@ extern DRNG_ctx drng_algorithm;
 
 unsigned long long kem_get_pk_len_bytes()
 {
-	return ZEN_PUBLICKEY_LEN_BYTES;
+    return ZEN_PUBLICKEY_LEN_BYTES;
 }
 
 unsigned long long kem_get_sk_len_bytes()
 {
-	return ZEN_SECREKEY_LEN_BYTES;
+    return ZEN_SECREKEY_LEN_BYTES;
 }
 
 unsigned long long kem_get_ss_len_bytes()
 {
-	return ZEN_SHAREDKEY_LEN_BYTES;
+    return ZEN_SHAREDKEY_LEN_BYTES;
 }
 
 unsigned long long kem_get_ct_len_bytes()
 {
-	return ZEN_CIPHERTEXT_LEN_BYTES;
+    return ZEN_CIPHERTEXT_LEN_BYTES;
 }
 
 int kem_keygen_derand(
-	unsigned char *pk, unsigned long long *pk_len_bytes,
-	unsigned char *sk, unsigned long long *sk_len_bytes,
-	const unsigned char *seed)
+    unsigned char *pk, unsigned long long *pk_len_bytes,
+    unsigned char *sk, unsigned long long *sk_len_bytes,
+    const unsigned char *seed)
 {
-	unsigned int i;
-
-	if (pk == NULL || pk_len_bytes == NULL || sk == NULL || sk_len_bytes == NULL) {
+    if (pk == NULL || pk_len_bytes == NULL || sk == NULL || sk_len_bytes == NULL || seed == NULL) {
         return -1;
     }
 
+    if (pke_keygen_derand(pk, sk, seed) != 0)
+        goto cleanup;
+    memcpy(sk + ZEN_INDCPA_SECREKEY_LEN_BYTES, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES);
+    if (sm3hash(2*ZEN_SYM_LEN_BYTES*8, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES*8, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES) != 0)
+        goto cleanup;
+    if (get_random_number(&drng_algorithm, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES+ZEN_SYM_LEN_BYTES, ZEN_SHAREDKEY_LEN_BYTES*8) != 0)
+        goto cleanup;
+    
     *pk_len_bytes = kem_get_pk_len_bytes();
     *sk_len_bytes = kem_get_sk_len_bytes();
+    return 0;
 
-	pke_keygen_derand(pk, sk, seed);
-	for(i = 0; i < ZEN_INDCPA_PUBLICKEY_LEN_BYTES; i++)
-	{
-		sk[i+ZEN_INDCPA_SECREKEY_LEN_BYTES] = pk[i];
-	}
-	sm3hash(2*ZEN_SYM_LEN_BYTES*8, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES*8, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES);
-	get_random_number(&drng_algorithm, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES+ZEN_SYM_LEN_BYTES, ZEN_SHAREDKEY_LEN_BYTES*8);
-	
-	return 0;
+cleanup:
+    *pk_len_bytes = 0;
+    *sk_len_bytes = 0;
+    memset(pk, 0, ZEN_PUBLICKEY_LEN_BYTES);
+    memset(sk, 0, ZEN_SECREKEY_LEN_BYTES);
+    return ZEN_ERR_INTERNAL;
 }
 
 int kem_keygen(
-	unsigned char *pk, unsigned long long *pk_len_bytes,
-	unsigned char *sk, unsigned long long *sk_len_bytes)
+    unsigned char *pk, unsigned long long *pk_len_bytes,
+    unsigned char *sk, unsigned long long *sk_len_bytes)
 {
-	unsigned int i;
-	if (pk == NULL || pk_len_bytes == NULL || sk == NULL || sk_len_bytes == NULL) {
+    if (pk == NULL || pk_len_bytes == NULL || sk == NULL || sk_len_bytes == NULL) {
         return -1;
     }
 
+    if (pke_keygen(pk, sk) != 0)
+        goto cleanup;
+    memcpy(sk + ZEN_INDCPA_SECREKEY_LEN_BYTES, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES);
+    if (sm3hash(2*ZEN_SYM_LEN_BYTES*8, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES*8, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES) != 0)
+        goto cleanup;
+    if (get_random_number(&drng_algorithm, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES+ZEN_SYM_LEN_BYTES, ZEN_SHAREDKEY_LEN_BYTES*8) != 0)
+        goto cleanup;
+    
     *pk_len_bytes = kem_get_pk_len_bytes();
     *sk_len_bytes = kem_get_sk_len_bytes();
+    return 0;
 
-	pke_keygen(pk, sk);
-	for(i = 0; i < ZEN_INDCPA_PUBLICKEY_LEN_BYTES; i++)
-	{
-		sk[i+ZEN_INDCPA_SECREKEY_LEN_BYTES] = pk[i];
-	}
-	sm3hash(2*ZEN_SYM_LEN_BYTES*8, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES*8, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES);
-	get_random_number(&drng_algorithm, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES+ZEN_SYM_LEN_BYTES, ZEN_SHAREDKEY_LEN_BYTES*8);
-	
-	return 0;
+cleanup:
+    *pk_len_bytes = 0;
+    *sk_len_bytes = 0;
+    memset(pk, 0, ZEN_PUBLICKEY_LEN_BYTES);
+    memset(sk, 0, ZEN_SECREKEY_LEN_BYTES);
+    return ZEN_ERR_INTERNAL;
 }
 
 int kem_enc(
-	unsigned char *pk, unsigned long long pk_len_bytes,
-	unsigned char *ss, unsigned long long *ss_len_bytes,
-	unsigned char *ct, unsigned long long *ct_len_bytes)
+    unsigned char *pk, unsigned long long pk_len_bytes,
+    unsigned char *ss, unsigned long long *ss_len_bytes,
+    unsigned char *ct, unsigned long long *ct_len_bytes)
 {
-	uint8_t buf[ZEN_INDCPA_MSG_LEN_BYTES+2*ZEN_SYM_LEN_BYTES];
-	uint8_t kr[2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES];
+    uint8_t buf[ZEN_INDCPA_MSG_LEN_BYTES+2*ZEN_SYM_LEN_BYTES];
+    uint8_t kr[2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES];
 
-	if (pk == NULL || ss == NULL || ss_len_bytes == NULL || ct == NULL || ct_len_bytes == NULL) {
+    if (pk == NULL || ss == NULL || ss_len_bytes == NULL || ct == NULL || ct_len_bytes == NULL) {
         return -1;
     }
     if (pk_len_bytes != kem_get_pk_len_bytes()) {
         return -2;
     }
 
+    //m
+    if (get_random_number(&drng_algorithm, buf, ZEN_INDCPA_MSG_LEN_BYTES*8) != 0)
+        goto cleanup;
+    //hash(pk)
+    if (sm3hash(2*ZEN_SYM_LEN_BYTES*8, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES*8, buf+ZEN_INDCPA_MSG_LEN_BYTES) != 0)
+        goto cleanup;
+    //hash(m||hash(pk))
+    if (pseudohash((2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES)*8, buf, (ZEN_INDCPA_MSG_LEN_BYTES+ZEN_SYM_LEN_BYTES)*8, kr) != 0)
+        goto cleanup;
+    if (pke_enc(pk, buf, kr+ZEN_SYM_LEN_BYTES, ct) != 0)
+        goto cleanup;
+    memcpy(ss, kr, ZEN_SHAREDKEY_LEN_BYTES);
+
     *ss_len_bytes = kem_get_ss_len_bytes();
     *ct_len_bytes = kem_get_ct_len_bytes();
+    return 0;
 
-	//m
-	get_random_number(&drng_algorithm, buf, ZEN_INDCPA_MSG_LEN_BYTES*8);
-	//hash(pk)
-	sm3hash(2*ZEN_SYM_LEN_BYTES*8, pk, ZEN_INDCPA_PUBLICKEY_LEN_BYTES*8, buf+ZEN_INDCPA_MSG_LEN_BYTES);
-	//hash(m||hash(pk))
-	pseudohash((2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES)*8, buf, (ZEN_INDCPA_MSG_LEN_BYTES+ZEN_SYM_LEN_BYTES)*8, kr);
-	pke_enc(pk, buf, kr+ZEN_SYM_LEN_BYTES, ct);
-	memcpy(ss, kr, ZEN_SHAREDKEY_LEN_BYTES);
-
-	return 0;
+cleanup:
+    *ss_len_bytes = 0;
+    *ct_len_bytes = 0;
+    memset(ct, 0, ZEN_CIPHERTEXT_LEN_BYTES);
+    memset(ss, 0, ZEN_SHAREDKEY_LEN_BYTES);
+    return ZEN_ERR_INTERNAL;
 }
 
 int kem_dec(
-	unsigned char *sk, unsigned long long sk_len_bytes,
-	unsigned char *ct, unsigned long long ct_len_bytes,
-	unsigned char *ss, unsigned long long *ss_len_bytes)
+    unsigned char *sk, unsigned long long sk_len_bytes,
+    unsigned char *ct, unsigned long long ct_len_bytes,
+    unsigned char *ss, unsigned long long *ss_len_bytes)
 {
-	unsigned int i, mask;
-	uint8_t buf[ZEN_INDCPA_MSG_LEN_BYTES+ZEN_SYM_LEN_BYTES];
-	uint8_t kr[2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES];
-	uint8_t zc[ZEN_SHAREDKEY_LEN_BYTES+ZEN_CIPHERTEXT_LEN_BYTES];
-	uint8_t ctp[ZEN_CIPHERTEXT_LEN_BYTES];
-	uint8_t ssp[2*ZEN_SHAREDKEY_LEN_BYTES];
-	uint8_t *pk = sk+ZEN_INDCPA_SECREKEY_LEN_BYTES;
+    unsigned int i;
+    uint32_t diff;
+    uint8_t mask;
+    uint8_t buf[ZEN_INDCPA_MSG_LEN_BYTES+ZEN_SYM_LEN_BYTES];
+    uint8_t kr[2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES];
+    uint8_t zc[ZEN_SHAREDKEY_LEN_BYTES+ZEN_CIPHERTEXT_LEN_BYTES];
+    uint8_t ctp[ZEN_CIPHERTEXT_LEN_BYTES];
+    uint8_t ssp[2*ZEN_SHAREDKEY_LEN_BYTES];
+    uint8_t *pk;
 
-	if (sk == NULL || ct == NULL || ss == NULL || ss_len_bytes == NULL) {
+    if (sk == NULL || ct == NULL || ss == NULL || ss_len_bytes == NULL) {
         return -2;
     }
     if (sk_len_bytes != kem_get_sk_len_bytes() || ct_len_bytes != kem_get_ct_len_bytes()) {
         return -3;
     }
-	*ss_len_bytes = kem_get_ss_len_bytes();
+    pk = sk + ZEN_INDCPA_SECREKEY_LEN_BYTES;
 
-	pke_dec(sk, ct, buf);
-	memcpy(buf+ZEN_INDCPA_MSG_LEN_BYTES, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES, ZEN_SYM_LEN_BYTES);
-	pseudohash((2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES)*8, buf, (ZEN_INDCPA_MSG_LEN_BYTES+ZEN_SYM_LEN_BYTES)*8, kr);
+    pke_dec(sk, ct, buf);
+    memcpy(buf+ZEN_INDCPA_MSG_LEN_BYTES, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES, ZEN_SYM_LEN_BYTES);
+    if (pseudohash((2*ZEN_SYM_LEN_BYTES+SEED_LEN_BYTES)*8, buf, (ZEN_INDCPA_MSG_LEN_BYTES+ZEN_SYM_LEN_BYTES)*8, kr) != 0)
+        goto cleanup;
 
-	memcpy(zc, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES+ZEN_SYM_LEN_BYTES, ZEN_SHAREDKEY_LEN_BYTES);
-	memcpy(zc+ZEN_SHAREDKEY_LEN_BYTES, ct, ZEN_CIPHERTEXT_LEN_BYTES);
+    memcpy(zc, sk+ZEN_INDCPA_SECREKEY_LEN_BYTES+ZEN_INDCPA_PUBLICKEY_LEN_BYTES+ZEN_SYM_LEN_BYTES, ZEN_SHAREDKEY_LEN_BYTES);
+    memcpy(zc+ZEN_SHAREDKEY_LEN_BYTES, ct, ZEN_CIPHERTEXT_LEN_BYTES);
 
-	sm3hash(2*ZEN_SYM_LEN_BYTES*8, zc, (ZEN_SHAREDKEY_LEN_BYTES+ZEN_CIPHERTEXT_LEN_BYTES)*8, ssp);
+    if (sm3hash(2*ZEN_SYM_LEN_BYTES*8, zc, (ZEN_SHAREDKEY_LEN_BYTES+ZEN_CIPHERTEXT_LEN_BYTES)*8, ssp) != 0)
+        goto cleanup;
 
-	pke_enc(pk, buf, kr+ZEN_SYM_LEN_BYTES, ctp);	
+    if (pke_enc(pk, buf, kr+ZEN_SYM_LEN_BYTES, ctp) != 0)
+        goto cleanup;	
 
-	mask = 0;
-	for(i = 0; i < ZEN_CIPHERTEXT_LEN_BYTES; i++)
-	{
-		mask |= (ct[i] ^ ctp[i]);
-	}
-	mask = ((mask | (0u - mask)) >> 31);
+    diff = 0;
+    for(i = 0; i < ZEN_CIPHERTEXT_LEN_BYTES; i++)
+    {
+        diff |= (uint32_t)(ct[i] ^ ctp[i]);
+    }
+    mask = (uint8_t)(0u - ((diff | (0u - diff)) >> 31));
 
-	for(i = 0; i < ZEN_SHAREDKEY_LEN_BYTES; i++)
-	{
-		ss[i] = (ssp[i] & (-mask)) | (kr[i] & (~(-mask)));
-	}
+    /* GCC/Clang value barrier: keep the mask opaque so selection cannot
+     * become a choice of source address. Both candidate secrets must be read.
+     * The empty asm emits no instructions and needs no memory clobber. */
+    __asm__ __volatile__("" : "+r" (mask));
 
+    for(i = 0; i < ZEN_SHAREDKEY_LEN_BYTES; i++)
+    {
+        ss[i] = (uint8_t)((ssp[i] & mask) | (kr[i] & ~mask));
+    }
 
-	return 0;
+    *ss_len_bytes = kem_get_ss_len_bytes();
+    return 0;
+
+cleanup:
+    *ss_len_bytes = 0;
+    memset(ss, 0, ZEN_SHAREDKEY_LEN_BYTES);
+    return ZEN_ERR_INTERNAL;
 }

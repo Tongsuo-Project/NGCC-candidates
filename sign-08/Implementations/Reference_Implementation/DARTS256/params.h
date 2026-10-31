@@ -3,7 +3,14 @@
 
 #include "config.h"
 
-#define CRHBYTES 64 
+#define CRHBYTES 64
+
+/* Message representative length, independent from sampling seed lengths. */
+#if DARTS_MODE == 512
+#define MUBYTES 128
+#else
+#define MUBYTES CRHBYTES
+#endif
 
 /*-----------------128 bits security parameters ----------------------*/    
 #if DARTS_MODE == 128 
@@ -20,11 +27,14 @@
 
 #define P 0.15  // probability of 1 (or -1) 
 #define TAU 30
-#define B0 5858.47  // 小球的半径（小）
-#define B 6049.79   // 超球采样半径（大）
-#define B1 6046.76  // 中球的半径（中）
+#define B0 5866.64  // 小球的半径（小）
+#define B 6057.90   // 超球采样半径（大）
+#define B1 6054.88  // 中球的半径（中）
 #define B11 7500.00 // 验签时的半径
-#define GAMMA 34.93
+#define GAMMA 34.92
+/* Derived bounds retained for parameter auditing; not used at runtime. */
+#define SC_BOUND 191.26
+#define B_SIS 10435.93
 #define D 10
 #define SQNM 39.19 // sqrt(n*(k+l))
 
@@ -75,11 +85,14 @@
 #define L 3
 #define P 0.3125  // probability of 1 (or -1) 
 #define TAU 59
-#define B0 18429.40  // 小球的半径（小）
-#define B 18906.24   // 超球采样半径（大）
-#define B1 18900.22  // 中球的半径（中）
+#define B0 18440.32  // 小球的半径（小）
+#define B 18916.70   // 超球采样半径（大）
+#define B1 18910.70  // 中球的半径（中）
 #define B11 23000.00 // 验签时的半径
-#define GAMMA 62.08
+#define GAMMA 62.02
+/* Derived bounds retained for parameter auditing; not used at runtime. */
+#define SC_BOUND 476.38
+#define B_SIS 31240.06
 #define D 9
 #define SQNM 50.60 // sqrt(n*(k+l))
 
@@ -129,13 +142,16 @@
 #define L 3
 #define P 0.2  // probability of 1 (or -1) 
 #define TAU 115
-#define B0 73426.15  // 小球的半径（小）
-#define B 74206.14   // 超球采样半径（大）
-#define B1 74202.04  // 中球的半径（中）
+#define B0 73440.24  // 小球的半径（小）
+#define B 74220.97   // 超球采样半径（大）
+#define B1 74216.86  // 中球的半径（中）
 #define B11 80000.00 // 验签时的半径
-#define GAMMA 72.73
+#define GAMMA 72.80
+/* Derived bounds retained for parameter auditing; not used at runtime. */
+#define SC_BOUND 780.72
+#define B_SIS 91607.91
 #define D 10
-#define SQNM 72.75 // sqrt(n*(k+l))
+#define SQNM 71.55 // sqrt(n*(k+l))
 
 #define BASE_ENC_HB_Z1 1500
 #define BASE_ENC_H 1000
@@ -158,7 +174,7 @@
 #define POLY_HIGHBITS_PACKEDBYTES ((N * D) / 8)  // size of highbits of poly
 #define POLY_LOWBITS_PACKEDBYTES (N) // size of lowbits of poly (BAT)
 
-#define ENCODE_MAXSIZE 2649  // 对 HighBits(z1) 和 h 的rANS编码的最大尺寸
+#define ENCODE_MAXSIZE 2650  // 对 HighBits(z1) 和 h 的rANS编码的最大尺寸
 
 #define POLYVECK_HIGHBITS_PACKEDBYTES (K * POLY_HIGHBITS_PACKEDBYTES) // 多项式向量高位封装尺寸
 

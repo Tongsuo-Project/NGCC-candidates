@@ -119,7 +119,7 @@ int crypto_sign_signature(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t
     uint8_t buf[POLYVECK_HIGHBITS_PACKEDBYTES] = {0}; // 用于存储 w 的高位部分
     uint8_t seedbuf[CRHBYTES] = {0}; // 用于采样随机向量 y1, y2 的种子
     uint8_t key[SEEDBYTES] = {0};    // s = (pk, s, K) 中的 K
-    uint8_t mu[CRHBYTES] = {0};      // μ = H(pk, m)  
+    uint8_t mu[MUBYTES] = {0};       // μ = H(pk, m)
 
     uint8_t b; // 1 字节
     uint16_t counter = 0;
@@ -140,9 +140,10 @@ int crypto_sign_signature(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t
     polyvecl highbits_z1, lowbits_z1;
     
     poly c, c_hat;  // challenge 多项式及其 NTT 表示
-    poly c_1_b;     // (1-b)c
+    poly c_1_b;     // (1-b)c, used by the hint computation
+    poly c_1_2b;    // (1-2b)c, used by the symmetric compression check
     poly w0, w0_highbits;       // w.vec[0] 及其高位部分
-    poly w0_cb, w0_cb_highbits; // w.vec[0] + (1-b)c 及其高位部分
+    poly w0_cb, w0_cb_highbits; // w.vec[0] + (1-2b)c 及其高位部分
 
     polyvecl cs;  // (c * s0, c * s1)
     polyveck ce;  // c * e
@@ -155,8 +156,8 @@ int crypto_sign_signature(uint8_t *sig, size_t *siglen, const uint8_t *m, size_t
     unpack_sk(A, &s0, &s1, &e, key, sk);
 
     sm3_xof_absorb_twice(&state, sk, CRYPTO_PUBLICKEYBYTES, m, mlen);
-    sm3_xof_squeeze(mu, CRHBYTES, &state);
-    sm3_xof_absorb_twice(&state, key, SEEDBYTES, mu, CRHBYTES);
+    sm3_xof_squeeze(mu, MUBYTES, &state);
+    sm3_xof_absorb_twice(&state, key, SEEDBYTES, mu, MUBYTES);
     sm3_xof_squeeze(seedbuf, CRHBYTES, &state);
 
     // 将 s = (s0, s1, e) 转换为 NTT 表示
@@ -184,8 +185,10 @@ reject:
 
     /*--------------------- Compress Check ---------------------*/
     w0 = w.vec[0];
-    poly_mul_1_b(&c_1_b, &c, b & 0x1); 
-    poly_add(&w0_cb, &w0, &c_1_b); // w0_cb = w0 + (1-b)c
+    poly_mul_1_b(&c_1_b, &c, b & 0x1);
+    poly_add(&c_1_2b, &c_1_b, &c_1_b);
+    poly_sub(&c_1_2b, &c_1_2b, &c);
+    poly_add(&w0_cb, &w0, &c_1_2b); // w0_cb = w0 + (1-2b)c
 
     poly_freeze(&w0);     // make coefficients in [0, Q)
     poly_freeze(&w0_cb);  // make coefficients in [0, Q)
@@ -287,7 +290,7 @@ int crypto_sign_verify(const uint8_t *sig, size_t siglen, const uint8_t *m, size
 
     unsigned int i;
     uint8_t buf[POLYVECK_HIGHBITS_PACKEDBYTES] = {0}; 
-    uint8_t seedA1[SEEDBYTES] = {0}, mu[CRHBYTES] = {0};
+    uint8_t seedA1[SEEDBYTES] = {0}, mu[MUBYTES] = {0};
     uint64_t sqnorm2;
     polyvecl A[K], z1, lowbits_z1, highbits_z1;
     polyveck A0, h, w1, Az1_cb, z2, Az1_cb_compressed;
@@ -317,7 +320,7 @@ int crypto_sign_verify(const uint8_t *sig, size_t siglen, const uint8_t *m, size
         A[i].vec[0] = A0.vec[i];
     }
 
-    // sqnorm2 = ||z1||^2
+    // sqnorm2 = ||centered(z1 mod Q)||^2
     sqnorm2 = polyvecl_sqnorm2(&z1); 
 
     // 计算 w = h + Compress(A * z1 + (q+1)/2 * c * beta, d)
@@ -334,9 +337,21 @@ int crypto_sign_verify(const uint8_t *sig, size_t siglen, const uint8_t *m, size
     
     polyveck_compress(&Az1_cb_compressed, &Az1_cb); // Az1_cb_compressed = Compress(A * z1 + (Q+1)/2 * c * beta, d)
     polyveck_add(&w1, &Az1_cb_compressed, &h); //  w = h + Compress(A * z1 + (Q+1)/2 * c * beta, d)
+
+    // Reject non-canonical representatives before packing or decompressing.
+    // Otherwise h and h +/- 2^D produce the same packed challenge input.
+    uint32_t invalid_w1 = 0;
+    for (i = 0; i < K; ++i) {
+        for (unsigned int j = 0; j < N; ++j) {
+            invalid_w1 |= (uint32_t)w1.vec[i].coeffs[j] >> D;
+        }
+    }
+    if (invalid_w1 != 0) {
+        return -1;
+    }
     
     sm3_xof_absorb_twice(&state, pk, CRYPTO_PUBLICKEYBYTES, m, mlen);
-    sm3_xof_squeeze(mu, CRHBYTES, &state);
+    sm3_xof_squeeze(mu, MUBYTES, &state);
     polyveck_pack_compressed(buf, &w1);  // Pack the compressed value (no further compression)
     poly_challenge(&c1, buf, mu);        // Regenerate challenge polynomial c1
 
@@ -352,7 +367,7 @@ int crypto_sign_verify(const uint8_t *sig, size_t siglen, const uint8_t *m, size
     polyveck_sub(&z2, &z2, &Az1_cb); // z2 = Decompress(w_compressed, d) - (A * z1 + (Q+1)/2 * c * beta)
 
     // 检查 z = (z1, z2) 是否符合范围
-    if (sqnorm2 + polyveck_sqnorm2(&z2) >= B11SQ * LN * LN) {
+    if (sqnorm2 + polyveck_sqnorm2(&z2) >= B11SQ) {
         return -1;
     }
 
