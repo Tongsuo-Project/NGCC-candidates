@@ -112,17 +112,21 @@ static void prg_256_ballet_coree(const uint8_t* key, uint8_t* internal_iv, uint8
 }
 
 #if PRG_HAS_BALLET_AVX2
-static inline __m256i prg_rotl64_avx2(__m256i x, int n) {
+/* AVX2 is local to kernels reached after the runtime OS/CPU gate. */
+#define PRG_TARGET_AVX2 __attribute__((target("avx2")))
+/* Same Ballet body, specialized for guarded AVX-512 F/VL. */
+#define PRG_TARGET_AVX512 __attribute__((target("avx2,avx512f,avx512vl")))
+PRG_TARGET_AVX2 static inline __m256i prg_rotl64_avx2(__m256i x, int n) {
   return _mm256_or_si256(_mm256_slli_epi64(x, n), _mm256_srli_epi64(x, 64 - n));
 }
 
-static inline __m256i prg_keymix_avx2(__m256i x, __m256i y) {
+PRG_TARGET_AVX2 static inline __m256i prg_keymix_avx2(__m256i x, __m256i y) {
   const __m256i s3 = _mm256_or_si256(_mm256_slli_epi64(x, 3), _mm256_srli_epi64(y, 61));
   const __m256i s5 = _mm256_or_si256(_mm256_slli_epi64(x, 5), _mm256_srli_epi64(y, 59));
   return _mm256_xor_si256(s3, s5);
 }
 
-static inline void prg_ballet256_round_avx2(const __m256i rk0, const __m256i rk1,
+PRG_TARGET_AVX2 static inline void prg_ballet256_round_avx2(const __m256i rk0, const __m256i rk1,
                                             const __m256i rk2, const __m256i rk3, __m256i* a,
                                             __m256i* b, __m256i* c, __m256i* d) {
   __m256i t0 = _mm256_xor_si256(*b, *c);
@@ -141,22 +145,22 @@ static inline void prg_ballet256_round_avx2(const __m256i rk0, const __m256i rk1
   *c = _mm256_add_epi64(*c, prg_rotl64_avx2(t0, 14));
 }
 
-static inline uint64_t prg_load64_be(const uint8_t* p) {
+PRG_TARGET_AVX2 static inline uint64_t prg_load64_be(const uint8_t* p) {
   uint64_t v;
   memcpy(&v, p, sizeof(v));
   return (uint64_t)__builtin_bswap64(v);
 }
 
-static inline uint64_t prg_load64_be_words(uint32_t lo_le, uint32_t hi_le) {
+PRG_TARGET_AVX2 static inline uint64_t prg_load64_be_words(uint32_t lo_le, uint32_t hi_le) {
   return (uint64_t)__builtin_bswap64((((uint64_t)hi_le) << 32) | (uint64_t)lo_le);
 }
 
-static inline void prg_store64_swapped(uint8_t* p, uint64_t v) {
+PRG_TARGET_AVX2 static inline void prg_store64_swapped(uint8_t* p, uint64_t v) {
   const uint64_t s = (uint64_t)__builtin_bswap64(v);
   memcpy(p, &s, sizeof(s));
 }
 
-static void prg_fixed_tweak_init_4keys_avx2(const uint8_t* iv, uint32_t tweak,
+PRG_TARGET_AVX2 static void prg_fixed_tweak_init_4keys_avx2(const uint8_t* iv, uint32_t tweak,
                                             uint32_t* ctr32_host, uint64_t* ctr_hi,
                                             __m256i* b_init, __m256i* c_init,
                                             __m256i* d_init) {
@@ -184,7 +188,7 @@ static void prg_fixed_tweak_init_4keys_avx2(const uint8_t* iv, uint32_t tweak,
   }
 }
 
-static void prg_independent_tweak_init_4keys_avx2(const uint8_t* iv, uint32_t tweak_base,
+PRG_TARGET_AVX2 static void prg_independent_tweak_init_4keys_avx2(const uint8_t* iv, uint32_t tweak_base,
                                                   size_t index, uint32_t* ctr32_host,
                                                   uint64_t* ctr_hi, __m256i* b_init,
                                                   __m256i* c_init, __m256i* d_init) {
@@ -223,7 +227,7 @@ static void prg_independent_tweak_init_4keys_avx2(const uint8_t* iv, uint32_t tw
   }
 }
 
-static void prg_ballet256_enc4_avx2(const uint64_t* rk, const uint8_t in[4][PRG_BLOCK_SIZE],
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_enc4_avx2_body(const uint64_t* rk, const uint8_t in[4][PRG_BLOCK_SIZE],
                                     uint8_t out[4][PRG_BLOCK_SIZE]) {
   uint64_t a_lane[4], b_lane[4], c_lane[4], d_lane[4];
   for (size_t lane = 0; lane < 4; ++lane) {
@@ -277,7 +281,21 @@ static void prg_ballet256_enc4_avx2(const uint64_t* rk, const uint8_t in[4][PRG_
   }
 }
 
-static void prg_ballet256_genrk4_pack_avx2(const uint8_t* keys, size_t key_stride,
+PRG_TARGET_AVX512 static void prg_ballet256_enc4_avx2_avx512(const uint64_t* rk, const uint8_t in[4][PRG_BLOCK_SIZE],
+                                    uint8_t out[4][PRG_BLOCK_SIZE]) {
+  prg_ballet256_enc4_avx2_body(rk, in, out);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_enc4_avx2(const uint64_t* rk, const uint8_t in[4][PRG_BLOCK_SIZE],
+                                    uint8_t out[4][PRG_BLOCK_SIZE], int use_avx512) {
+  if (use_avx512) {
+    prg_ballet256_enc4_avx2_avx512(rk, in, out);
+    return;
+  }
+  prg_ballet256_enc4_avx2_body(rk, in, out);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_genrk4_pack_avx2_body(const uint8_t* keys, size_t key_stride,
                                             __m256i* rk_pack) {
   __m256i k0 = _mm256_set_epi64x((long long)prg_load64_be(keys + 3u * key_stride + 8),
                                  (long long)prg_load64_be(keys + 2u * key_stride + 8),
@@ -313,7 +331,21 @@ static void prg_ballet256_genrk4_pack_avx2(const uint8_t* keys, size_t key_strid
   }
 }
 
-static void prg_ballet256_enc1_4keys_avx2_ctr(const __m256i* rk_pack, uint64_t a0, __m256i b_init,
+PRG_TARGET_AVX512 static void prg_ballet256_genrk4_pack_avx2_avx512(const uint8_t* keys, size_t key_stride,
+                                            __m256i* rk_pack) {
+  prg_ballet256_genrk4_pack_avx2_body(keys, key_stride, rk_pack);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_genrk4_pack_avx2(const uint8_t* keys, size_t key_stride,
+                                            __m256i* rk_pack, int use_avx512) {
+  if (use_avx512) {
+    prg_ballet256_genrk4_pack_avx2_avx512(keys, key_stride, rk_pack);
+    return;
+  }
+  prg_ballet256_genrk4_pack_avx2_body(keys, key_stride, rk_pack);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_enc1_4keys_avx2_ctr_body(const __m256i* rk_pack, uint64_t a0, __m256i b_init,
                                                __m256i c_init, __m256i d_init,
                                                uint8_t out[4][PRG_BLOCK_SIZE]) {
   __m256i a = _mm256_set1_epi64x((long long)a0);
@@ -345,7 +377,23 @@ static void prg_ballet256_enc1_4keys_avx2_ctr(const __m256i* rk_pack, uint64_t a
   }
 }
 
-static void prg_ballet256_enc2_4keys_avx2_ctr(const __m256i* rk_pack, uint64_t a0_lo,
+PRG_TARGET_AVX512 static void prg_ballet256_enc1_4keys_avx2_ctr_avx512(const __m256i* rk_pack, uint64_t a0, __m256i b_init,
+                                               __m256i c_init, __m256i d_init,
+                                               uint8_t out[4][PRG_BLOCK_SIZE]) {
+  prg_ballet256_enc1_4keys_avx2_ctr_body(rk_pack, a0, b_init, c_init, d_init, out);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_enc1_4keys_avx2_ctr(const __m256i* rk_pack, uint64_t a0, __m256i b_init,
+                                               __m256i c_init, __m256i d_init,
+                                               uint8_t out[4][PRG_BLOCK_SIZE], int use_avx512) {
+  if (use_avx512) {
+    prg_ballet256_enc1_4keys_avx2_ctr_avx512(rk_pack, a0, b_init, c_init, d_init, out);
+    return;
+  }
+  prg_ballet256_enc1_4keys_avx2_ctr_body(rk_pack, a0, b_init, c_init, d_init, out);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_enc2_4keys_avx2_ctr_body(const __m256i* rk_pack, uint64_t a0_lo,
                                                uint64_t a0_hi, __m256i b_init, __m256i c_init,
                                                __m256i d_init,
                                                uint8_t out_lo[4][PRG_BLOCK_SIZE],
@@ -396,9 +444,29 @@ static void prg_ballet256_enc2_4keys_avx2_ctr(const __m256i* rk_pack, uint64_t a
   }
 }
 
-static void prg_ballet256_emit_fixed_4keys_avx2(const __m256i* rk_pack, const uint8_t* iv,
+PRG_TARGET_AVX512 static void prg_ballet256_enc2_4keys_avx2_ctr_avx512(const __m256i* rk_pack, uint64_t a0_lo,
+                                               uint64_t a0_hi, __m256i b_init, __m256i c_init,
+                                               __m256i d_init,
+                                               uint8_t out_lo[4][PRG_BLOCK_SIZE],
+                                               uint8_t out_hi[4][PRG_BLOCK_SIZE]) {
+  prg_ballet256_enc2_4keys_avx2_ctr_body(rk_pack, a0_lo, a0_hi, b_init, c_init, d_init, out_lo, out_hi);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_enc2_4keys_avx2_ctr(const __m256i* rk_pack, uint64_t a0_lo,
+                                               uint64_t a0_hi, __m256i b_init, __m256i c_init,
+                                               __m256i d_init,
+                                               uint8_t out_lo[4][PRG_BLOCK_SIZE],
+                                               uint8_t out_hi[4][PRG_BLOCK_SIZE], int use_avx512) {
+  if (use_avx512) {
+    prg_ballet256_enc2_4keys_avx2_ctr_avx512(rk_pack, a0_lo, a0_hi, b_init, c_init, d_init, out_lo, out_hi);
+    return;
+  }
+  prg_ballet256_enc2_4keys_avx2_ctr_body(rk_pack, a0_lo, a0_hi, b_init, c_init, d_init, out_lo, out_hi);
+}
+
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_ballet256_emit_fixed_4keys_avx2(const __m256i* rk_pack, const uint8_t* iv,
                                                 uint32_t tweak, uint8_t* const out_ptrs[4],
-                                                size_t outlen) {
+                                                size_t outlen, int use_avx512) {
   const size_t full_blocks = outlen / PRG_BLOCK_SIZE;
   const size_t rem = outlen % PRG_BLOCK_SIZE;
   uint32_t ctr32_host;
@@ -417,7 +485,7 @@ static void prg_ballet256_emit_fixed_4keys_avx2(const __m256i* rk_pack, const ui
     uint8_t stream0[4][PRG_BLOCK_SIZE];
     uint8_t stream1[4][PRG_BLOCK_SIZE];
     prg_ballet256_enc2_4keys_avx2_ctr(rk_pack, a0, a1, b_init, c_init, d_init, stream0,
-                                       stream1);
+                                       stream1, use_avx512);
     for (size_t lane = 0; lane < 4u; ++lane) {
       if (out_ptrs[lane]) {
         uint8_t* out_lane = out_ptrs[lane] + blk * PRG_BLOCK_SIZE;
@@ -431,7 +499,7 @@ static void prg_ballet256_emit_fixed_4keys_avx2(const __m256i* rk_pack, const ui
     const uint32_t ctr_blk_le = htole32(ctr32_host + (uint32_t)blk);
     const uint64_t a0 = (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)ctr_blk_le);
     uint8_t stream[4][PRG_BLOCK_SIZE];
-    prg_ballet256_enc1_4keys_avx2_ctr(rk_pack, a0, b_init, c_init, d_init, stream);
+    prg_ballet256_enc1_4keys_avx2_ctr(rk_pack, a0, b_init, c_init, d_init, stream, use_avx512);
     for (size_t lane = 0; lane < 4u; ++lane) {
       if (out_ptrs[lane]) {
         memcpy(out_ptrs[lane] + blk * PRG_BLOCK_SIZE, stream[lane], PRG_BLOCK_SIZE);
@@ -443,7 +511,7 @@ static void prg_ballet256_emit_fixed_4keys_avx2(const __m256i* rk_pack, const ui
     const uint32_t ctr_blk_le = htole32(ctr32_host + (uint32_t)full_blocks);
     const uint64_t a0 = (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)ctr_blk_le);
     uint8_t stream[4][PRG_BLOCK_SIZE];
-    prg_ballet256_enc1_4keys_avx2_ctr(rk_pack, a0, b_init, c_init, d_init, stream);
+    prg_ballet256_enc1_4keys_avx2_ctr(rk_pack, a0, b_init, c_init, d_init, stream, use_avx512);
     for (size_t lane = 0; lane < 4u; ++lane) {
       if (out_ptrs[lane]) {
         memcpy(out_ptrs[lane] + full_blocks * PRG_BLOCK_SIZE, stream[lane], rem);
@@ -452,19 +520,19 @@ static void prg_ballet256_emit_fixed_4keys_avx2(const __m256i* rk_pack, const ui
   }
 }
 
-static void prg_2lambda_and_170_batch4_256_avx2(
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_2lambda_and_170_batch4_256_avx2(
     const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
     uint32_t tweak_170, uint8_t* const out_2lambda_ptrs[4], size_t out_2lambda_len,
-    uint8_t* const out_170_ptrs[4]) {
+    uint8_t* const out_170_ptrs[4], int use_avx512) {
   __m256i rk_pack[RoundBallet256256 * 2];
-  prg_ballet256_genrk4_pack_avx2(keys, key_stride, rk_pack);
+  prg_ballet256_genrk4_pack_avx2(keys, key_stride, rk_pack, use_avx512);
   prg_ballet256_emit_fixed_4keys_avx2(rk_pack, iv, tweak_2lambda, out_2lambda_ptrs,
-                                      out_2lambda_len);
-  prg_ballet256_emit_fixed_4keys_avx2(rk_pack, iv, tweak_170, out_170_ptrs, PRG_170_BYTES);
+                                      out_2lambda_len, use_avx512);
+  prg_ballet256_emit_fixed_4keys_avx2(rk_pack, iv, tweak_170, out_170_ptrs, PRG_170_BYTES, use_avx512);
 }
 
-static void prg_256_ballet_avx2(const uint8_t* key, uint8_t* internal_iv, uint8_t* out,
-                                size_t outlen) {
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_256_ballet_avx2_body(const uint8_t* key, uint8_t* internal_iv, uint8_t* out,
+                                size_t outlen, int use_avx512) {
   uint64_t rk[RoundBallet256256 * 4];
   BalletGenRK_256_256_ENC((u8i*)rk, (u8i*)key);
 
@@ -475,7 +543,7 @@ static void prg_256_ballet_avx2(const uint8_t* key, uint8_t* internal_iv, uint8_
       memcpy(ctr[lane], internal_iv, IV_SIZE);
       prg_increment_iv(internal_iv);
     }
-    prg_ballet256_enc4_avx2(rk, (const uint8_t(*)[PRG_BLOCK_SIZE])ctr, stream);
+    prg_ballet256_enc4_avx2(rk, (const uint8_t(*)[PRG_BLOCK_SIZE])ctr, stream, use_avx512);
     memcpy(out, stream, 4u * PRG_BLOCK_SIZE);
     out += 4u * PRG_BLOCK_SIZE;
     outlen -= 4u * PRG_BLOCK_SIZE;
@@ -489,16 +557,33 @@ static void prg_256_ballet_avx2(const uint8_t* key, uint8_t* internal_iv, uint8_
       memcpy(ctr[lane], internal_iv, IV_SIZE);
       prg_increment_iv(internal_iv);
     }
-    prg_ballet256_enc4_avx2(rk, (const uint8_t(*)[PRG_BLOCK_SIZE])ctr, stream);
+    prg_ballet256_enc4_avx2(rk, (const uint8_t(*)[PRG_BLOCK_SIZE])ctr, stream, use_avx512);
     memcpy(out, stream, outlen);
   }
+}
+
+PRG_TARGET_AVX2 static void prg_256_ballet_avx2(const uint8_t* key, uint8_t* internal_iv, uint8_t* out,
+                                size_t outlen) {
+  prg_256_ballet_avx2_body(key, internal_iv, out, outlen, 0);
+}
+
+PRG_TARGET_AVX512 static void prg_256_ballet_avx2_avx512(const uint8_t* key, uint8_t* internal_iv, uint8_t* out,
+                                size_t outlen) {
+  prg_256_ballet_avx2_body(key, internal_iv, out, outlen, 1);
 }
 #endif
 
 static void prg_256_ballet(const uint8_t* key, uint8_t* internal_iv, uint8_t* out,
                            size_t outlen) {
 #if PRG_HAS_BALLET_AVX2
-  if (sm4th_x86_has_avx2()) {
+  /* Select once per PRG batch; inner kernels use this choice. */
+  const unsigned int caps = sm4th_x86_get_caps();
+  const unsigned int avx512 = SM4TH_X86_CAP_AVX2 | SM4TH_X86_CAP_AVX512F_VL;
+  if ((caps & avx512) == avx512) {
+    prg_256_ballet_avx2_avx512(key, internal_iv, out, outlen);
+    return;
+  }
+  if ((caps & SM4TH_X86_CAP_AVX2) != 0u) {
     prg_256_ballet_avx2(key, internal_iv, out, outlen);
     return;
   }
@@ -522,13 +607,14 @@ void prg(const uint8_t* key, const uint8_t* iv, uint32_t tweak, uint8_t* out,
   prg_256_dispatch(key, iv, tweak, out, outlen, seclvl);
 }
 
-void prg_2_lambda_independent_batch(const uint8_t* keys, size_t key_stride, const uint8_t* iv,
+#if PRG_HAS_BALLET_AVX2
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_2_lambda_independent_batch_avx2_body(const uint8_t* keys, size_t key_stride, const uint8_t* iv,
                                     uint32_t tweak_base, uint8_t* out, size_t out_stride,
-                                    unsigned int seclvl, size_t count) {
+                                    unsigned int seclvl, size_t count, int use_avx512) {
   const size_t outlen = 2u * (size_t)(seclvl / 8u);
   size_t i = 0;
 #if PRG_HAS_BALLET_AVX2
-  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u && sm4th_x86_has_avx2() &&
+  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u &&
       out_stride >= outlen && count >= 4u) {
     for (; i + 4u <= count; i += 4u) {
       uint32_t ctr32_host;
@@ -541,14 +627,14 @@ void prg_2_lambda_independent_batch(const uint8_t* keys, size_t key_stride, cons
       uint8_t stream1[4][PRG_BLOCK_SIZE];
       prg_independent_tweak_init_4keys_avx2(iv, tweak_base, i, &ctr32_host, &ctr_hi, &b_init,
                                             &c_init, &d_init);
-      prg_ballet256_genrk4_pack_avx2(keys + i * key_stride, key_stride, rk_pack);
+      prg_ballet256_genrk4_pack_avx2(keys + i * key_stride, key_stride, rk_pack, use_avx512);
 
       const uint64_t a0 =
           (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)htole32(ctr32_host));
       const uint64_t a1 =
           (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)htole32(ctr32_host + 1u));
       prg_ballet256_enc2_4keys_avx2_ctr(rk_pack, a0, a1, b_init, c_init, d_init, stream0,
-                                         stream1);
+                                         stream1, use_avx512);
 
       for (size_t lane = 0; lane < 4u; ++lane) {
         uint8_t* out_lane = out + (i + lane) * out_stride;
@@ -563,17 +649,55 @@ void prg_2_lambda_independent_batch(const uint8_t* keys, size_t key_stride, cons
   }
 }
 
-void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd(
+PRG_TARGET_AVX2 static void prg_2_lambda_independent_batch_avx2(const uint8_t* keys, size_t key_stride, const uint8_t* iv,
+                                    uint32_t tweak_base, uint8_t* out, size_t out_stride,
+                                    unsigned int seclvl, size_t count) {
+  prg_2_lambda_independent_batch_avx2_body(keys, key_stride, iv, tweak_base, out, out_stride, seclvl, count, 0);
+}
+
+PRG_TARGET_AVX512 static void prg_2_lambda_independent_batch_avx2_avx512(const uint8_t* keys, size_t key_stride, const uint8_t* iv,
+                                    uint32_t tweak_base, uint8_t* out, size_t out_stride,
+                                    unsigned int seclvl, size_t count) {
+  prg_2_lambda_independent_batch_avx2_body(keys, key_stride, iv, tweak_base, out, out_stride, seclvl, count, 1);
+}
+#endif
+
+void prg_2_lambda_independent_batch(const uint8_t* keys, size_t key_stride, const uint8_t* iv,
+                                    uint32_t tweak_base, uint8_t* out, size_t out_stride,
+                                    unsigned int seclvl, size_t count) {
+#if PRG_HAS_BALLET_AVX2
+  /* Select once per PRG batch; inner kernels use this choice. */
+  const unsigned int caps = sm4th_x86_get_caps();
+  const unsigned int avx512 = SM4TH_X86_CAP_AVX2 | SM4TH_X86_CAP_AVX512F_VL;
+  if ((caps & avx512) == avx512) {
+    prg_2_lambda_independent_batch_avx2_avx512(keys, key_stride, iv, tweak_base, out, out_stride, seclvl, count);
+    return;
+  }
+  if ((caps & SM4TH_X86_CAP_AVX2) != 0u) {
+    prg_2_lambda_independent_batch_avx2(keys, key_stride, iv, tweak_base, out, out_stride, seclvl, count);
+    return;
+  }
+#endif
+  const size_t outlen = 2u * (size_t)(seclvl / 8u);
+  size_t i = 0;
+
+  for (; i < count; ++i) {
+    prg(keys + i * key_stride, iv, tweak_base + (uint32_t)i, out + i * out_stride, seclvl, outlen);
+  }
+}
+
+#if PRG_HAS_BALLET_AVX2
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_avx2_body(
     const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
     uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, uint8_t* out_2lambda,
     size_t out_2lambda_stride, uint8_t* out_170, size_t out_170_stride, unsigned int seclvl,
-    size_t count) {
+    size_t count, int use_avx512) {
   const size_t key_bytes = prg_key_bytes(seclvl);
   const size_t out_2lambda_len = out_2lambda_stride;
   size_t i = 0;
 
 #if PRG_HAS_BALLET_AVX2
-  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u && sm4th_x86_has_avx2() &&
+  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u &&
       out_170_stride >= PRG_170_BYTES && count >= 4u) {
     const size_t n4 = count & ~(size_t)3u;
     for (; i < n4; i += 4u) {
@@ -591,7 +715,7 @@ void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd(
       }
       prg_2lambda_and_170_batch4_256_avx2(keys + i * key_stride, key_stride, iv,
                                           tweak_2lambda, tweak_170, out2_ptrs,
-                                          out_2lambda_len, out170_ptrs);
+                                          out_2lambda_len, out170_ptrs, use_avx512);
     }
   }
 #endif
@@ -607,17 +731,70 @@ void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd(
   }
 }
 
-void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map(
+PRG_TARGET_AVX2 static void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_avx2(
+    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
+    uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, uint8_t* out_2lambda,
+    size_t out_2lambda_stride, uint8_t* out_170, size_t out_170_stride, unsigned int seclvl,
+    size_t count) {
+  prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_avx2_body(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count, 0);
+}
+
+PRG_TARGET_AVX512 static void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_avx2_avx512(
+    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
+    uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, uint8_t* out_2lambda,
+    size_t out_2lambda_stride, uint8_t* out_170, size_t out_170_stride, unsigned int seclvl,
+    size_t count) {
+  prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_avx2_body(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count, 1);
+}
+#endif
+
+void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd(
+    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
+    uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, uint8_t* out_2lambda,
+    size_t out_2lambda_stride, uint8_t* out_170, size_t out_170_stride, unsigned int seclvl,
+    size_t count) {
+#if PRG_HAS_BALLET_AVX2
+  /* Select once per PRG batch; inner kernels use this choice. */
+  const unsigned int caps = sm4th_x86_get_caps();
+  const unsigned int avx512 = SM4TH_X86_CAP_AVX2 | SM4TH_X86_CAP_AVX512F_VL;
+  if ((caps & avx512) == avx512) {
+    prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_avx2_avx512(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count);
+    return;
+  }
+  if ((caps & SM4TH_X86_CAP_AVX2) != 0u) {
+    prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_avx2(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count);
+    return;
+  }
+#endif
+  const size_t key_bytes = prg_key_bytes(seclvl);
+  const size_t out_2lambda_len = out_2lambda_stride;
+  size_t i = 0;
+
+
+
+  for (; i < count; ++i) {
+    const uint8_t* key_i = keys + i * key_stride;
+    if (sd_out + i * sd_stride != key_i) {
+      memcpy(sd_out + i * sd_stride, key_i, key_bytes);
+    }
+    prg(key_i, iv, tweak_2lambda, out_2lambda + i * out_2lambda_stride, seclvl,
+        out_2lambda_len);
+    prg(key_i, iv, tweak_170, out_170 + i * out_170_stride, seclvl, PRG_170_BYTES);
+  }
+}
+
+#if PRG_HAS_BALLET_AVX2
+PRG_TARGET_AVX2 static inline __attribute__((always_inline)) void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map_avx2_body(
     const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
     uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, size_t sd_index_base,
     size_t sd_index_xor, uint8_t* out_2lambda, size_t out_2lambda_stride, uint8_t* out_170,
-    size_t out_170_stride, unsigned int seclvl, size_t count) {
+    size_t out_170_stride, unsigned int seclvl, size_t count, int use_avx512) {
   const size_t key_bytes = prg_key_bytes(seclvl);
   const size_t out_2lambda_len = out_2lambda_stride;
   size_t i = 0;
 
 #if PRG_HAS_BALLET_AVX2
-  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u && sm4th_x86_has_avx2() &&
+  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u &&
       out_170_stride >= PRG_170_BYTES && count >= 4u) {
     const size_t n4 = count & ~(size_t)3u;
     for (; i < n4; i += 4u) {
@@ -637,10 +814,68 @@ void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map(
       }
       prg_2lambda_and_170_batch4_256_avx2(keys + i * key_stride, key_stride, iv,
                                           tweak_2lambda, tweak_170, out2_ptrs,
-                                          out_2lambda_len, out170_ptrs);
+                                          out_2lambda_len, out170_ptrs, use_avx512);
     }
   }
 #endif
+
+  for (; i < count; ++i) {
+    const uint8_t* key_i = keys + i * key_stride;
+    uint8_t* sd_i = prg_sd_xor_map_slot(sd_out, sd_stride, i, sd_index_base, sd_index_xor);
+    uint8_t* out170_i = prg_sd_xor_map_slot(out_170, out_170_stride, i, sd_index_base,
+                                            sd_index_xor);
+
+    if (sd_i) {
+      memcpy(sd_i, key_i, key_bytes);
+    }
+    prg(key_i, iv, tweak_2lambda, out_2lambda + i * out_2lambda_stride, seclvl,
+        out_2lambda_len);
+    if (out170_i) {
+      prg(key_i, iv, tweak_170, out170_i, seclvl, PRG_170_BYTES);
+    }
+  }
+}
+
+PRG_TARGET_AVX2 static void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map_avx2(
+    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
+    uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, size_t sd_index_base,
+    size_t sd_index_xor, uint8_t* out_2lambda, size_t out_2lambda_stride, uint8_t* out_170,
+    size_t out_170_stride, unsigned int seclvl, size_t count) {
+  prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map_avx2_body(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, sd_index_base, sd_index_xor, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count, 0);
+}
+
+PRG_TARGET_AVX512 static void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map_avx2_avx512(
+    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
+    uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, size_t sd_index_base,
+    size_t sd_index_xor, uint8_t* out_2lambda, size_t out_2lambda_stride, uint8_t* out_170,
+    size_t out_170_stride, unsigned int seclvl, size_t count) {
+  prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map_avx2_body(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, sd_index_base, sd_index_xor, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count, 1);
+}
+#endif
+
+void prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map(
+    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
+    uint32_t tweak_170, uint8_t* sd_out, size_t sd_stride, size_t sd_index_base,
+    size_t sd_index_xor, uint8_t* out_2lambda, size_t out_2lambda_stride, uint8_t* out_170,
+    size_t out_170_stride, unsigned int seclvl, size_t count) {
+#if PRG_HAS_BALLET_AVX2
+  /* Select once per PRG batch; inner kernels use this choice. */
+  const unsigned int caps = sm4th_x86_get_caps();
+  const unsigned int avx512 = SM4TH_X86_CAP_AVX2 | SM4TH_X86_CAP_AVX512F_VL;
+  if ((caps & avx512) == avx512) {
+    prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map_avx2_avx512(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, sd_index_base, sd_index_xor, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count);
+    return;
+  }
+  if ((caps & SM4TH_X86_CAP_AVX2) != 0u) {
+    prg_2_lambda_and_170_fixed_tweak_independent_batch_with_sd_xor_map_avx2(keys, key_stride, iv, tweak_2lambda, tweak_170, sd_out, sd_stride, sd_index_base, sd_index_xor, out_2lambda, out_2lambda_stride, out_170, out_170_stride, seclvl, count);
+    return;
+  }
+#endif
+  const size_t key_bytes = prg_key_bytes(seclvl);
+  const size_t out_2lambda_len = out_2lambda_stride;
+  size_t i = 0;
+
+
 
   for (; i < count; ++i) {
     const uint8_t* key_i = keys + i * key_stride;

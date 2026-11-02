@@ -6,7 +6,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msglen,
+/* Return failure when the final-challenge counter is exhausted. */
+int ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msglen,
                     const uint8_t* owf_key, const uint8_t* owf_input, const uint8_t* owf_output,
                     const uint8_t* witness, const uint8_t* rho, size_t rholen);
 

@@ -5,10 +5,9 @@
  */
 
 #include "fields.h"
+#include "macros.h"
 #include "utils.h"
 
-// GF(2^8) with X^8 + X^4 + X^3 + X^1 + 1
-#define bf8_modulus (UINT8_C((1 << 4) | (1 << 3) | (1 << 1) | 1))
 // GF(2^64) with X^64 + X^4 + X^3 + X^1 + 1
 #define bf64_modulus (UINT64_C((1 << 4) | (1 << 3) | (1 << 1) | 1))
 // GF(2^128) with X^128 + X^7 + X^2 + X^1 + 1
@@ -17,18 +16,6 @@
 #define U64C(x0, x1, x2, x3, x4, x5, x6, x7)                                                       \
   ((UINT64_C(x7) << 56) | (UINT64_C(x6) << 48) | (UINT64_C(x5) << 40) | (UINT64_C(x4) << 32) |     \
    (UINT64_C(x3) << 24) | (UINT64_C(x2) << 16) | (UINT64_C(x1) << 8) | UINT64_C(x0))
-
-uint8_t bits_sq(uint8_t x) {
-  uint8_t res = set_bit(get_bit(x, 0) ^ get_bit(x, 4) ^ get_bit(x, 6), 0);
-  res |= set_bit(get_bit(x, 4) ^ get_bit(x, 6) ^ get_bit(x, 7), 1);
-  res |= set_bit(get_bit(x, 1) ^ get_bit(x, 5), 2);
-  res |= set_bit(get_bit(x, 4) ^ get_bit(x, 5) ^ get_bit(x, 6) ^ get_bit(x, 7), 3);
-  res |= set_bit(get_bit(x, 2) ^ get_bit(x, 4) ^ get_bit(x, 7), 4);
-  res |= set_bit(get_bit(x, 5) ^ get_bit(x, 6), 5);
-  res |= set_bit(get_bit(x, 3) ^ get_bit(x, 5), 6);
-  res |= set_bit(get_bit(x, 6) ^ get_bit(x, 7), 7);
-  return res;
-}
 
 // GF(2^64) implementation
 
@@ -46,53 +33,7 @@ bf64_t bf64_mul(bf64_t lhs, bf64_t rhs) {
 
 // GF(2^128) implementation
 
-static const bf128_t bf128_alpha[7] = {
-    BF128C(U64C(0x0d, 0xce, 0x60, 0x55, 0xac, 0xe8, 0x3f, 0xa1),
-           U64C(0x1c, 0x9a, 0x97, 0xa9, 0x55, 0x85, 0x3d, 0x05)),
-    BF128C(U64C(0xe1, 0xae, 0x88, 0x34, 0xca, 0x59, 0x77, 0xec),
-           U64C(0x84, 0xbb, 0xbf, 0x9c, 0x43, 0xb7, 0xf4, 0x4c)),
-    BF128C(U64C(0xa8, 0x46, 0x39, 0x36, 0xae, 0x02, 0xcf, 0xbf),
-           U64C(0xc6, 0xd2, 0x51, 0x7d, 0x4f, 0x60, 0xad, 0x35)),
-    BF128C(U64C(0x49, 0x98, 0x2e, 0x3c, 0x48, 0x30, 0x83, 0x6b),
-           U64C(0xfe, 0x22, 0xa2, 0x40, 0x46, 0x36, 0xcb, 0x0d)),
-    BF128C(U64C(0xb4, 0x82, 0x1b, 0x7b, 0x27, 0x49, 0x2b, 0x25),
-           U64C(0xa5, 0xde, 0x88, 0x1a, 0xe1, 0x10, 0x98, 0x54)),
-    BF128C(U64C(0x22, 0xff, 0x21, 0x25, 0xef, 0xf2, 0x2b, 0xc7),
-           U64C(0x75, 0x1f, 0x0c, 0x6c, 0x68, 0xa5, 0x81, 0xd6)),
-    BF128C(U64C(0xbc, 0xf9, 0x36, 0xe1, 0x94, 0x8e, 0x7a, 0x7a),
-           U64C(0xe0, 0x8f, 0xb7, 0x4f, 0x1a, 0x31, 0x50, 0x09)),
-};
-
-/* bf128_byte_combine: out = x[0] + x[1]*alpha[0] + ... + x[7]*alpha[6]
- *
- * Scalar path: unchanged loop over bf128_mul.
- */
-bf128_t bf128_byte_combine(const bf128_t* x) {
-  bf128_t bf_out = x[0];
-  for (unsigned int i = 1; i < 8; ++i) {
-    bf_out = bf128_add(bf_out, bf128_mul(x[i], bf128_alpha[i - 1]));
-  }
-  return bf_out;
-}
-
-void bf128_sq_bit(bf128_t* out_tag, const bf128_t* in_tag) {
-  out_tag[0] = bf128_add(in_tag[0], bf128_add(in_tag[4], in_tag[6]));
-  out_tag[1] = bf128_add(in_tag[4], bf128_add(in_tag[6], in_tag[7]));
-  out_tag[2] = bf128_add(in_tag[1], in_tag[5]);
-  out_tag[3] = bf128_add(bf128_add(in_tag[4], in_tag[5]), bf128_add(in_tag[6], in_tag[7]));
-  out_tag[4] = bf128_add(in_tag[2], bf128_add(in_tag[4], in_tag[7]));
-  out_tag[5] = bf128_add(in_tag[5], in_tag[6]);
-  out_tag[6] = bf128_add(in_tag[3], in_tag[5]);
-  out_tag[7] = bf128_add(in_tag[6], in_tag[7]);
-}
-
-bf128_t bf128_byte_combine_bits(uint8_t x) {
-  bf128_t bf_out = bf128_from_bit(get_bit(x, 0));
-  for (unsigned int i = 1; i < 8; ++i) {
-    bf_out = bf128_add(bf_out, bf128_mul_bit(bf128_alpha[i - 1], get_bit(x, i)));
-  }
-  return bf_out;
-}
+/* Only SM4 byte embeddings are used by this instance. */
 
 static inline bf128_t bf128_and_64(bf128_t lhs, bf64_t rhs) {
   for (unsigned int i = 0; i != ARRAY_SIZE(lhs.values); ++i) {
@@ -121,6 +62,7 @@ static inline bf128_t bf128_dbl(bf128_t lhs) {
   return lhs;
 }
 
+#if REF_USE_LOOKUP_TABLES
 static inline bf128_t bf128_mul_x4(bf128_t lhs) {
   lhs = bf128_dbl(lhs);
   lhs = bf128_dbl(lhs);
@@ -128,15 +70,19 @@ static inline bf128_t bf128_mul_x4(bf128_t lhs) {
   lhs = bf128_dbl(lhs);
   return lhs;
 }
+#endif
 
+#if REF_USE_LOOKUP_TABLES
 static inline uint8_t bf128_nibble(bf128_t value, unsigned int nibble) {
   if (nibble < 16u) {
     return (uint8_t)((BF_VALUE(value, 0) >> (4u * nibble)) & 0x0fu);
   }
   return (uint8_t)((BF_VALUE(value, 1) >> (4u * (nibble - 16u))) & 0x0fu);
 }
+#endif
 
 bf128_t bf128_mul(bf128_t lhs, bf128_t rhs) {
+#if REF_USE_LOOKUP_TABLES
   bf128_t table[16];
   table[0] = bf128_zero();
   table[1] = lhs;
@@ -157,6 +103,14 @@ bf128_t bf128_mul(bf128_t lhs, bf128_t rhs) {
     result = bf128_add(result, table[bf128_nibble(rhs, idx - 1u)]);
   }
   return result;
+#else
+  bf128_t result = bf128_and_64(lhs, bf128_bit_to_uint64_mask(rhs, 0));
+  for (unsigned int bit = 1; bit != 128; ++bit) {
+    lhs = bf128_dbl(lhs);
+    result = bf128_add(result, bf128_and_64(lhs, bf128_bit_to_uint64_mask(rhs, bit)));
+  }
+  return result;
+#endif
 }
 
 bf128_t bf128_mul_64(bf128_t lhs, bf64_t rhs) {
@@ -377,53 +331,4 @@ bf128_t bf128_byte_combine_bits_sq_sm4(uint8_t x) {
   return bf128_byte_combine_bits_sm4(bits_sq_sm4(x));
 }
 
-/* ================================================================ */
-/*  Random Number Generation for Field Elements                    */
-/* ================================================================ */
-
-/* Internal pseudo-random state using linear congruential generator */
-static uint64_t prng_state = 0xDEADBEEFDEADBEEFULL;
-
-/**
- * Initialize PRNG with a seed value
- * For cryptographic use, this should be seeded from a proper RNG source
- */
-void bf_random_seed(uint64_t seed) {
-    prng_state = seed ? seed : 0xDEADBEEFDEADBEEFULL;
-}
-
-/**
- * Simple pseudo-random number generator using linear congruential method
- * Parameters from Numerical Recipes
- */
-static uint64_t bf_random_u64(void) {
-    /* Linear congruential generator: x_{n+1} = (a*x_n + c) mod m */
-    const uint64_t a = UINT64_C(2685821657736338717);
-    const uint64_t c = UINT64_C(2246822519);
-    prng_state = a * prng_state + c;
-    return prng_state;
-}
-
-/**
- * Generate a random GF(2^8) element
- */
-bf8_t bf8_random(void) {
-    return (uint8_t)(bf_random_u64() & 0xFF);
-}
-
-/**
- * Generate a random GF(2^64) element
- */
-bf64_t bf64_random(void) {
-    return bf_random_u64();
-}
-
-/**
- * Generate a random GF(2^128) element
- */
-bf128_t bf128_random(void) {
-    bf128_t result;
-    result.values[0] = bf_random_u64();
-    result.values[1] = bf_random_u64();
-    return result;
-}
+/* Unused field-only pseudo-random helpers were removed. */

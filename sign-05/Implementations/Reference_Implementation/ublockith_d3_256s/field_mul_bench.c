@@ -60,6 +60,10 @@ static double bench_bf256(size_t iters, bf256_t* digest) {
   }
   const uint64_t end = bench_read_cycles();
   *digest = acc;
+  /* Never turn an invalid cycle read into a numeric measurement. */
+  if (!bench_cycles_available() || end < begin) {
+    return -1.0;
+  }
   return (double)(end - begin) / (double)iters;
 }
 
@@ -80,6 +84,10 @@ static double bench_bf256_x4(size_t iters, bf256_t* digest) {
   }
   const uint64_t end = bench_read_cycles();
   *digest = bf256_add(bf256_add(acc[0], acc[1]), bf256_add(acc[2], acc[3]));
+  /* Never turn an invalid cycle read into a numeric measurement. */
+  if (!bench_cycles_available() || end < begin) {
+    return -1.0;
+  }
   return (double)(end - begin) / (double)(iters * 4u);
 }
 
@@ -102,6 +110,12 @@ int main(int argc, char** argv) {
   printf("field_mul_bench: ublockith optimized\n");
   printf("iterations: %zu\n", iters);
   printf("cycle source: %s\n", bench_cycles_source());
+  bench_cycles_print_metadata();
+  if (!bench_cycles_available()) {
+    puts("bf256_mul cycles/op: N/A");
+    puts("bf256_mul x4 throughput cycles/op: N/A");
+    return 0;
+  }
   printf("bf256_mul cycles/op: %.2f digest=%016" PRIx64 "%016" PRIx64
          "%016" PRIx64 "%016" PRIx64 "\n",
          c256, digest.values[3], digest.values[2], digest.values[1], digest.values[0]);

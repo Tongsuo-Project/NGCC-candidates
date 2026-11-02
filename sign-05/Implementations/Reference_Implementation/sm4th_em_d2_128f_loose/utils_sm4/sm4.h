@@ -1,3 +1,4 @@
+/* Remove unused internal helpers; public scheme and test entrypoints are retained. */
 #ifndef SM4_H
 #define SM4_H
 
@@ -94,10 +95,7 @@ static inline void sm4_store_be_u32(uint32_t value, uint8_t out[4])
 }
 
 /* SM4 linear transformation L used in key expansion */
-static inline uint32_t SM4_L(uint32_t B)
-{
-    return B ^ rotl32_u(B, 2) ^ rotl32_u(B, 10) ^ rotl32_u(B, 18) ^ rotl32_u(B, 24);
-}
+
 
 /* SM4 inverse of linear transformation L */
 static inline uint32_t SM4_L_inv(uint32_t C)
@@ -115,10 +113,7 @@ static inline void SM4_L_inv_bytes(const uint8_t in[4], uint8_t out[4])
 }
 
 /* SM4 linear transformation L_prime used in encryption rounds */
-static inline uint32_t SM4_L_prime(uint32_t B)
-{
-    return B ^ rotl32_u(B, 13) ^ rotl32_u(B, 23);
-}
+
 
 /* SM4 inverse of linear transformation L_prime */
 static inline uint32_t SM4_L_prime_inv(uint32_t C)

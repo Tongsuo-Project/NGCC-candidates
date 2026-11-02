@@ -1,7 +1,10 @@
+/* Retain the benchmark statistics used by these instance entry points. */
 #ifndef CHINITH_IMPLEMENTATIONS_BENCH_CYCLES_H
 #define CHINITH_IMPLEMENTATIONS_BENCH_CYCLES_H
 
 #include <stdint.h>
+#include <inttypes.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,23 +17,41 @@
 extern long syscall(long number, ...);
 #endif
 
+/* Report direct, pinned user CPU cycles only; invalidate rather than estimate. */
 typedef struct {
   int initialized;
   int perf_fd;
   int use_perf;
+  int have_read;
+  int error_number;
   const char* source;
+  const char* error;
+  uint64_t last_value;
+  uint64_t time_enabled;
+  uint64_t time_running;
 } bench_cycles_state_t;
 
-static bench_cycles_state_t bench_cycles_state = {0, -1, 0, "unavailable"};
+static bench_cycles_state_t bench_cycles_state = {
+    0, -1, 0, 0, 0, "unavailable", "Linux perf_event CPU_CYCLES unavailable", 0, 0, 0};
+
+static inline void bench_cycles_invalidate(const char* error, int error_number) {
+  bench_cycles_state.use_perf = 0;
+  bench_cycles_state.source = "unavailable";
+  bench_cycles_state.error = error;
+  bench_cycles_state.error_number = error_number;
+#if defined(__linux__)
+  if (bench_cycles_state.perf_fd >= 0) {
+    close(bench_cycles_state.perf_fd);
+    bench_cycles_state.perf_fd = -1;
+  }
+#endif
+}
 
 static void bench_cycles_init(void) {
   if (bench_cycles_state.initialized) {
     return;
   }
   bench_cycles_state.initialized = 1;
-  bench_cycles_state.perf_fd = -1;
-  bench_cycles_state.use_perf = 0;
-  bench_cycles_state.source = "unavailable";
 
 #if defined(__linux__)
   struct perf_event_attr attr;
@@ -38,27 +59,35 @@ static void bench_cycles_init(void) {
   attr.type = PERF_TYPE_HARDWARE;
   attr.size = sizeof(attr);
   attr.config = PERF_COUNT_HW_CPU_CYCLES;
-  attr.disabled = 0;
+  attr.disabled = 1;
+  attr.pinned = 1;
   attr.exclude_kernel = 1;
   attr.exclude_hv = 1;
+  attr.read_format = PERF_FORMAT_TOTAL_TIME_ENABLED | PERF_FORMAT_TOTAL_TIME_RUNNING;
 
   bench_cycles_state.perf_fd =
       (int)syscall(__NR_perf_event_open, &attr, 0, -1, -1, 0);
-  if (bench_cycles_state.perf_fd >= 0) {
-    bench_cycles_state.use_perf = 1;
-    bench_cycles_state.source = "perf_event cpu-cycles (user)";
-    ioctl(bench_cycles_state.perf_fd, PERF_EVENT_IOC_RESET, 0);
-    ioctl(bench_cycles_state.perf_fd, PERF_EVENT_IOC_ENABLE, 0);
+  if (bench_cycles_state.perf_fd < 0) {
+    bench_cycles_invalidate("perf_event_open failed", errno);
     return;
   }
+  if (ioctl(bench_cycles_state.perf_fd, PERF_EVENT_IOC_RESET, 0) != 0) {
+    bench_cycles_invalidate("PERF_EVENT_IOC_RESET failed", errno);
+    return;
+  }
+  if (ioctl(bench_cycles_state.perf_fd, PERF_EVENT_IOC_ENABLE, 0) != 0) {
+    bench_cycles_invalidate("PERF_EVENT_IOC_ENABLE failed", errno);
+    return;
+  }
+  bench_cycles_state.use_perf = 1;
+  bench_cycles_state.source = "perf_event cpu-cycles (user)";
+  bench_cycles_state.error = "none";
 #endif
-
 }
 
 static inline int bench_cycles_available(void) {
   bench_cycles_init();
-  return bench_cycles_state.use_perf
-      ;
+  return bench_cycles_state.use_perf;
 }
 
 static inline const char* bench_cycles_source(void) {
@@ -70,16 +99,51 @@ static inline uint64_t bench_read_cycles(void) {
   bench_cycles_init();
 #if defined(__linux__)
   if (bench_cycles_state.use_perf) {
-    uint64_t value = 0;
-    if (read(bench_cycles_state.perf_fd, &value, sizeof(value)) ==
-        (ssize_t)sizeof(value)) {
-      return value;
+    uint64_t sample[3]; /* value, time_enabled, time_running (nanoseconds) */
+    const ssize_t nread = read(bench_cycles_state.perf_fd, sample, sizeof(sample));
+    if (nread != (ssize_t)sizeof(sample)) {
+      bench_cycles_invalidate("perf read failed or incomplete", nread < 0 ? errno : 0);
+      return UINT64_MAX;
     }
-    return 0;
+    const int regressed = bench_cycles_state.have_read &&
+        (sample[0] < bench_cycles_state.last_value ||
+         sample[1] < bench_cycles_state.time_enabled ||
+         sample[2] < bench_cycles_state.time_running);
+    bench_cycles_state.have_read = 1;
+    bench_cycles_state.last_value = sample[0];
+    bench_cycles_state.time_enabled = sample[1];
+    bench_cycles_state.time_running = sample[2];
+    if (sample[2] == 0 || sample[1] != sample[2]) {
+      bench_cycles_invalidate("perf event not continuously running (no scaling)", 0);
+      return UINT64_MAX;
+    }
+    if (regressed) {
+      bench_cycles_invalidate("perf counter or timing metadata regressed", 0);
+      return UINT64_MAX;
+    }
+    return sample[0];
   }
 #endif
+  return UINT64_MAX;
+}
 
-  return 0;
+static inline void bench_cycles_print_metadata(void) {
+  bench_cycles_init();
+  printf("cycle pinned: 1\n");
+  printf("cycle valid: %s\n", bench_cycles_state.use_perf ? "yes" : "no");
+  if (bench_cycles_state.have_read) {
+    printf("cycle time enabled (ns): %" PRIu64 "\n", bench_cycles_state.time_enabled);
+    printf("cycle time running (ns): %" PRIu64 "\n", bench_cycles_state.time_running);
+  } else {
+    printf("cycle time enabled (ns): N/A\n");
+    printf("cycle time running (ns): N/A\n");
+  }
+  printf("cycle error: %s", bench_cycles_state.error);
+  if (bench_cycles_state.error_number != 0) {
+    printf(" (errno=%d: %s)", bench_cycles_state.error_number,
+           strerror(bench_cycles_state.error_number));
+  }
+  printf("\n");
 }
 
 typedef struct {
@@ -222,63 +286,6 @@ static void bench_print_long_double_stats(const char* label,
   average /= (long double)count;
   printf("%-6s: %.6Lf / %.6Lf / %.6Lf / %.6Lf / %.6Lf\n", label,
          average, min, median, p90, max);
-}
-
-static inline void bench_print_double_outliers(const char* label, const double* samples,
-                                        size_t count) {
-  static const double thresholds[] = {2.0, 5.0, 10.0};
-  double min = 0.0;
-  double median = 0.0;
-  double p90 = 0.0;
-  double max = 0.0;
-  if (bench_double_stats(samples, count, &min, &median, &p90, &max) != 0 ||
-      median <= 0.0) {
-    printf("%-6s: N/A\n", label);
-    return;
-  }
-
-  printf("%-6s:", label);
-  for (size_t t = 0; t != sizeof(thresholds) / sizeof(thresholds[0]); ++t) {
-    size_t hits = 0;
-    const double threshold = median * thresholds[t];
-    for (size_t i = 0; i != count; ++i) {
-      if (samples[i] > threshold) {
-        hits++;
-      }
-    }
-    printf(" >%.0fx=%zu/%zu (%.2f%%)", thresholds[t], hits, count,
-           100.0 * (double)hits / (double)count);
-  }
-  printf("\n");
-}
-
-static inline void bench_print_long_double_outliers(const char* label,
-                                             const long double* samples,
-                                             size_t count) {
-  static const long double thresholds[] = {2.0L, 5.0L, 10.0L};
-  long double min = 0.0L;
-  long double median = 0.0L;
-  long double p90 = 0.0L;
-  long double max = 0.0L;
-  if (bench_long_double_stats(samples, count, &min, &median, &p90, &max) != 0 ||
-      median <= 0.0L) {
-    printf("%-6s: N/A\n", label);
-    return;
-  }
-
-  printf("%-6s:", label);
-  for (size_t t = 0; t != sizeof(thresholds) / sizeof(thresholds[0]); ++t) {
-    size_t hits = 0;
-    const long double threshold = median * thresholds[t];
-    for (size_t i = 0; i != count; ++i) {
-      if (samples[i] > threshold) {
-        hits++;
-      }
-    }
-    printf(" >%.0Lfx=%zu/%zu (%.2Lf%%)", thresholds[t], hits, count,
-           100.0L * (long double)hits / (long double)count);
-  }
-  printf("\n");
 }
 
 #endif

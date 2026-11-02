@@ -16,16 +16,16 @@ static inline void ublock_round_witness(uint32_t* X0, uint32_t* X1, const uint32
         uint32_t a = X0[w] ^ rki[w];
         uint32_t b = X1[w] ^ rki[w + 4];
 
-        // Step 19-20: compute subQWord by table
-        a = ((uint32_t)UBLOCK_SBOX_BYTE[a >> 24] << 24) |
-            ((uint32_t)UBLOCK_SBOX_BYTE[(a >> 16) & 0xFF] << 16) |
-            ((uint32_t)UBLOCK_SBOX_BYTE[(a >> 8) & 0xFF] << 8) |
-            (uint32_t)UBLOCK_SBOX_BYTE[a & 0xFF];
+        /* Use Boolean SubByte by default; retain the explicit legacy lookup option. */
+        a = ((uint32_t)ublock_sub_byte(a >> 24) << 24) |
+            ((uint32_t)ublock_sub_byte((a >> 16) & 0xFF) << 16) |
+            ((uint32_t)ublock_sub_byte((a >> 8) & 0xFF) << 8) |
+            (uint32_t)ublock_sub_byte(a & 0xFF);
 
-        b = ((uint32_t)UBLOCK_SBOX_BYTE[b >> 24] << 24) |
-            ((uint32_t)UBLOCK_SBOX_BYTE[(b >> 16) & 0xFF] << 16) |
-            ((uint32_t)UBLOCK_SBOX_BYTE[(b >> 8) & 0xFF] << 8) |
-            (uint32_t)UBLOCK_SBOX_BYTE[b & 0xFF];
+        b = ((uint32_t)ublock_sub_byte(b >> 24) << 24) |
+            ((uint32_t)ublock_sub_byte((b >> 16) & 0xFF) << 16) |
+            ((uint32_t)ublock_sub_byte((b >> 8) & 0xFF) << 8) |
+            (uint32_t)ublock_sub_byte(b & 0xFF);
 
         // Step 21-26
         b ^= a;

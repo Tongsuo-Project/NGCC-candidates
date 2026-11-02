@@ -1,3 +1,4 @@
+/* Unused signature-independent helpers were removed; active backend entrypoints remain. */
 // sm4_ref.h
 // 2018-04-20  Markku-Juhani O. Saarinen <mjos@iki.fi>
 
@@ -15,9 +16,6 @@ void sm4_key_schedule(const uint8_t key[], uint32_t rk[]);
 
 void sm4_encrypt(const uint32_t rk[SM4_KEY_SCHEDULE],
     const uint8_t *plaintext, uint8_t *ciphertext);
-
-void sm4_decrypt(const uint32_t rk[SM4_KEY_SCHEDULE],
-    const uint8_t *ciphertext, uint8_t *plaintext);
 
 #endif
 

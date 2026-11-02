@@ -38,6 +38,9 @@ typedef struct {
 /* Signature main API */
 
 int vistrutith_d3_512s_keygen(uint8_t* pk, uint8_t* sk, const uint8_t* sk_key, const uint8_t* sk_input);
+/* Both explicit-randomness signing entry points require a
+ * non-NULL rho of exactly SIGN_RANDOMNESS_BYTES (640 bits).
+ */
 int vistrutith_d3_512s_sign_with_randomness(const uint8_t* sk, const uint8_t* message, size_t message_len, const uint8_t* rho, size_t rho_len, uint8_t* signature, size_t* signature_len);
 // int vistrutith_d3_512s_sign(const uint8_t* sk, const uint8_t* message, size_t message_len, uint8_t* signature, size_t* signature_len);
 int vistrutith_d3_512s_verify(const uint8_t* pk, const uint8_t* message, size_t message_len, const uint8_t* signature, size_t signature_len);

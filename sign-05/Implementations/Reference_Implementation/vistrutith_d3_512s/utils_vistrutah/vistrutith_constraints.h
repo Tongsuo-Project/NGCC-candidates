@@ -14,6 +14,14 @@
 #define VISTRUTITH_ENC_CSTRNTS_IO_LEN \
   (VISTRUTITH_ENC_CSTRNTS_STEPS * VISTRUTAH_512_BLOCK_SIZE)
 
+/* clarify-261002-1000_xhs1.txt item 2: retain every polynomial coefficient. */
+typedef struct {
+  bf512_t c[3];
+} vistrutith_deg2_t;
+typedef struct {
+  bf512_t c[4];
+} vistrutith_deg3_t;
+
 /* Prover bits-side aliases (concrete-byte operations). */
 #define vistrutith_shuffle_key_bits vistrutah_shuffle_key
 #define vistrutith_rotate_bytes_bits vistrutah_rotate_bytes
@@ -54,7 +62,7 @@ void vistrutith_sbox_affine_prover(bf512_t* out_val, bf512_t* out_tag,
                                    const bf512_t* in_val, const bf512_t* in_tag,
                                    size_t nbytes, bool sq);
 void vistrutith_sbox_affine_verifier(bf512_t* out_key, const bf512_t* in_key,
-                                     size_t nbytes, bool sq);
+                                     size_t nbytes, bool sq, bf512_t constant_scale);
 
 /* ShiftRows */
 void vistrutith_shiftrows_prover(bf512_t* out_val, bf512_t* out_tag,
@@ -88,7 +96,7 @@ void vistrutith_bit_inv_sbox_affine_prover(uint8_t out_bits[16], bf512_t out_tag
                                            const uint8_t in_bits[16],
                                            const bf512_t in_tag[128]);
 void vistrutith_bit_inv_sbox_affine_verifier(bf512_t out_key[128],
-                                             const bf512_t in_key[128]);
+                                             const bf512_t in_key[128], bf512_t delta);
 
 /* BitInvMix (inverse of ViMix on 512-bit state) */
 void vistrutith_inv_mix_prover(
@@ -102,9 +110,9 @@ void vistrutith_inv_mix_verifier(
 
 /* ForwardByNorm */
 void vistrutith_forward_by_norm_prover(
-    bf512_t out_a_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t out_a_tag[VISTRUTAH_512_BLOCK_SIZE],
-    bf512_t out_a_sq_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t out_a_sq_tag[VISTRUTAH_512_BLOCK_SIZE],
-    bf512_t z_norm_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t z_norm_tag[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg2_t out_a[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg2_t out_a_sq[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg3_t z_norm[VISTRUTAH_512_BLOCK_SIZE],
     const uint8_t in_state_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t in_state_tag[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const uint8_t norm_packed[VISTRUTAH_512_BLOCK_SIZE / 2u],
@@ -117,7 +125,7 @@ void vistrutith_forward_by_norm_verifier(
     bf512_t z_norm_key[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t in_state_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t norm_key[VISTRUTAH_512_BLOCK_SIZE * 4u],
-    const bf512_t fixed_key_key[VISTRUTAH_512_BLOCK_SIZE * 8u]);
+    const bf512_t fixed_key_key[VISTRUTAH_512_BLOCK_SIZE * 8u], bf512_t delta);
 
 /* BackwardZeroRndByBits */
 void vistrutith_backward_zerornd_by_bits_prover(
@@ -130,7 +138,8 @@ void vistrutith_backward_zerornd_by_bits_prover(
 void vistrutith_backward_zerornd_by_bits_verifier(
     bf512_t out_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t m_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
-    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u], const uint8_t rc_bits[16]);
+    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u], const uint8_t rc_bits[16],
+    bf512_t delta);
 
 /* BackwardFinalRndByBits */
 void vistrutith_backward_finalrnd_by_bits_prover(
@@ -142,31 +151,27 @@ void vistrutith_backward_finalrnd_by_bits_prover(
 void vistrutith_backward_finalrnd_by_bits_verifier(
     bf512_t out_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t ct_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
-    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u]);
+    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u], bf512_t delta);
 
 /* AppendCstrntsByBits */
 void vistrutith_append_cstrnts_by_bits_prover(
-    bf512_t z0_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t z0_tag[VISTRUTAH_512_BLOCK_SIZE],
-    bf512_t z1_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t z1_tag[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t x_val[VISTRUTAH_512_BLOCK_SIZE], const bf512_t x_tag[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t x_sq_val[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t x_sq_tag[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg3_t z0[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg3_t z1[VISTRUTAH_512_BLOCK_SIZE],
+    const vistrutith_deg2_t x[VISTRUTAH_512_BLOCK_SIZE],
+    const vistrutith_deg2_t x_sq[VISTRUTAH_512_BLOCK_SIZE],
     const uint8_t y_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t y_tag[VISTRUTAH_512_BLOCK_SIZE * 8u]);
 void vistrutith_append_cstrnts_by_bits_verifier(
     bf512_t z0_key[VISTRUTAH_512_BLOCK_SIZE], bf512_t z1_key[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t x_key[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t x_sq_key[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t y_key[VISTRUTAH_512_BLOCK_SIZE * 8u]);
+    const bf512_t y_key[VISTRUTAH_512_BLOCK_SIZE * 8u], bf512_t delta);
 
 /* EncCstrnts */
 void vistrutith_enc_constraints_prover(
-    bf512_t z_norm_val[VISTRUTITH_ENC_CSTRNTS_NORM_LEN],
-    bf512_t z_norm_tag[VISTRUTITH_ENC_CSTRNTS_NORM_LEN],
-    bf512_t z_io0_val[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
-    bf512_t z_io0_tag[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
-    bf512_t z_io1_val[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
-    bf512_t z_io1_tag[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
+    vistrutith_deg3_t z_norm[VISTRUTITH_ENC_CSTRNTS_NORM_LEN],
+    vistrutith_deg3_t z_io0[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
+    vistrutith_deg3_t z_io1[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
     const uint8_t in_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t in_tag[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const uint8_t out_bits[VISTRUTAH_512_BLOCK_SIZE],
@@ -180,6 +185,6 @@ void vistrutith_enc_constraints_verifier(
     bf512_t z_io1_key[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
     const bf512_t in_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t out_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
-    const bf512_t w_key[VISTRUTAH_WITNESS_TOTAL_BYTES * 8u]);
+    const bf512_t w_key[VISTRUTAH_WITNESS_TOTAL_BYTES * 8u], bf512_t delta);
 
 #endif

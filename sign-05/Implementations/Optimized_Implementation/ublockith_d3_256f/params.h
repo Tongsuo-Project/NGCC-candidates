@@ -9,6 +9,9 @@
 
 #define UNIVERSAL_HASH_B_BITS 16
 #define UNIVERSAL_HASH_B (UNIVERSAL_HASH_B_BITS / 8)
+/* Fixed signing randomness, independent of the PRG width. */
+#define SIGN_RANDOMNESS_BITS 384
+#define SIGN_RANDOMNESS_BYTES (SIGN_RANDOMNESS_BITS / 8)
 #define IV_SIZE 32
 #define SALT_SIZE 32
 

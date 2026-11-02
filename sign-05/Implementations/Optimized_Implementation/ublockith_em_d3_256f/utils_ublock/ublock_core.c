@@ -1,46 +1,11 @@
-/*
- * uBlock-256/256 block cipher — T-box optimized portable C implementation
- *
- *   256-bit block, 256-bit key, r = 24 rounds.
- *
- * Speed optimization:
- *   The S-box and the linear diffusion layer are fused into 8 T-box tables
- *   (TA0..TA3 for the X0 half, TB0..TB3 for the X1 half), each with 256
- *   uint64_t entries.  Total table footprint: 16 KB.  This is the same
- *   technique used by related T-box implementations in OpenSSL.
- *
- * Cache-timing side-channel mitigation:
- *   Inspired by constant-structure round-handling approaches in OpenSSL, which use a
- *   byte-wise S-box path (SM4_T_slow) for the first and last rounds to
- *   reduce the cache-based side-channel attack surface at the
- *   plaintext/ciphertext boundary.
- *
- *   We apply the same strategy here:
- *     - Round  0 (first)  : ublock256_round_slow() — attacker knows plaintext,
- *                           so a direct Flush+Reload on the T-box tables would
- *                           reveal rk[0] byte-by-byte.
- *     - Rounds 1..22      : ublock256_round_w()    — fast T-box path;
- *                           middle-round state is unknown to the attacker.
- *     - Round 23 (last)   : ublock256_round_slow() — attacker knows ciphertext,
- *                           symmetric risk to round 0.
- *
- *   ublock256_round_slow() only accesses UBLOCK_SBOX_BYTE[256] (256 bytes =
- *   4 cache lines).  All 4 lines are loaded on the first call, so subsequent
- *   byte accesses within the same encryption are cache-line indistinguishable.
- *   This eliminates the trivial key-byte recovery path at the cost of two
- *   slower rounds out of 24 (~8% overhead).
- *
- *   Note: this is an engineering trade-off, not a formal guarantee.  A
- *   flush-before-encrypt attack can still extract ~2 bits of index information
- *   per access (4 lines → log2(4) = 2 bits).  Full side-channel safety
- *   requires a bitsliced implementation.
- *
- * References:
- *   "uBlock: A New Efficient Symmetric Encryption Primitive"
- *   OpenSSL reference: https://github.com/openssl/openssl
+/* uBlock-256/256, 24 rounds.
+ * Default: Boolean S-box and explicit linear diffusion in every round.
+ * REF_USE_LOOKUP_TABLES=1 restores the legacy performance path; that path
+ * uses secret-indexed tables in middle rounds and is not cache resistant.
  */
 
 #include "ublock.h"
+#include "../compat.h"
 #include "ublock_internal.h"
 #include "utils.h"
 #include <string.h>
@@ -58,13 +23,12 @@
  *  Each entry packs (a_out << 32 | b_out) as uint64_t.               *
  * ================================================================== */
 
+#if REF_USE_LOOKUP_TABLES
 static uint64_t UBLOCK_TA0[256], UBLOCK_TA1[256], UBLOCK_TA2[256], UBLOCK_TA3[256];
 static uint64_t UBLOCK_TB0[256], UBLOCK_TB1[256], UBLOCK_TB2[256], UBLOCK_TB3[256];
-static int ublock_tbox_ready = 0;
 
-static void ublock_tbox_init(void)
+static void ublock_tbox_init_initialize(void)
 {
-    if (ublock_tbox_ready) return;
 
     uint64_t *ta[4] = { UBLOCK_TA0, UBLOCK_TA1, UBLOCK_TA2, UBLOCK_TA3 };
     uint64_t *tb[4] = { UBLOCK_TB0, UBLOCK_TB1, UBLOCK_TB2, UBLOCK_TB3 };
@@ -103,7 +67,12 @@ static void ublock_tbox_init(void)
             }
         }
     }
-    ublock_tbox_ready = 1;
+}
+
+/* Serialize first initialization and publish the read-only table. */
+static void ublock_tbox_init(void) {
+  static ref_once_t once = REF_ONCE_INIT;
+  ref_call_once(&once, ublock_tbox_init_initialize);
 }
 
 /* ================================================================== *
@@ -120,8 +89,8 @@ static void ublock_tbox_init(void)
  *  per word-pair (analogous to SM4_T() in OpenSSL's sm4.c).          *
  *  Each of the 8 tables spans 256 × 8 B = 2 KB (16 cache lines);     *
  *  the index directly depends on rk XOR state, so cache-timing        *
- *  attacks can observe which cache line is touched.  Safe only for    *
- *  middle rounds where the attacker cannot know the round input.      *
+ *  attacks may observe which cache line is touched, including in      *
+ *  middle rounds. This optional legacy path is not cache resistant.   *
  * ================================================================== */
 
 // for portable C and rotl32_u, we use unint32_t arrays 
@@ -150,33 +119,12 @@ static inline void ublock256_round_w(uint32_t X0[4], uint32_t X1[4],
     ublock_perm_PL(X0, ow0);
     ublock_perm_PR(X1, ow1);
 }
+#else
+static void ublock_tbox_init(void) { }
+#endif
 
-/* ================================================================== *
- *  ublock256_round_slow — cache-hardened round function              *
- *                                                                     *
- *  Modelled after SM4_T_slow() in OpenSSL's sm4/sm4.c:               *
- *    https://github.com/openssl/openssl/blob/master/crypto/sm4/sm4.c *
- *                                                                     *
- *  OpenSSL comment (paraphrased):                                     *
- *    "Uses byte-wise sbox in the first and last rounds to provide     *
- *     some protection from cache based side channels."               *
- *                                                                     *
- *  We apply the identical strategy to uBlock:                         *
- *  Instead of the 16 KB T-box (8 × 2 KB, 128 cache lines total),     *
- *  this path queries only UBLOCK_SBOX_BYTE[256] (256 bytes = 4 cache *
- *  lines) and then performs the linear diffusion explicitly.          *
- *  Because all 4 cache lines fit in L1 and are warmed on first use,  *
- *  subsequent byte accesses produce no observable cache-line pattern. *
- *                                                                     *
- *  Linear mixing layer per word-pair (a = X0[w]^rk, b = X1[w]^rk):  *
- *    b ^= a                                                           *
- *    a ^= rotl32(b,  4)                                               *
- *    b ^= rotl32(a,  8)                                               *
- *    a ^= rotl32(b,  8)                                               *
- *    b ^= rotl32(a, 20)                                               *
- *    a ^= b                                                           *
- * ================================================================== */
 
+/* Explicit diffusion. Substitution follows the selected build mode. */
 static inline void ublock256_round_slow(uint32_t X0[4], uint32_t X1[4],
                                          const uint32_t rki[8])
 {
@@ -186,16 +134,16 @@ static inline void ublock256_round_slow(uint32_t X0[4], uint32_t X1[4],
         uint32_t a = X0[w] ^ rki[w];
         uint32_t b = X1[w] ^ rki[w + 4];
 
-        /* S-box substitution via the small 256-byte table only */
-        a = ((uint32_t)UBLOCK_SBOX_BYTE[a >> 24]         << 24)
-          | ((uint32_t)UBLOCK_SBOX_BYTE[(a >> 16) & 0xFF] << 16)
-          | ((uint32_t)UBLOCK_SBOX_BYTE[(a >>  8) & 0xFF] <<  8)
-          |  (uint32_t)UBLOCK_SBOX_BYTE[ a         & 0xFF];
+        /* Boolean substitution by default; optional legacy byte table. */
+        a = ((uint32_t)ublock_sub_byte(a >> 24)         << 24)
+          | ((uint32_t)ublock_sub_byte((a >> 16) & 0xFF) << 16)
+          | ((uint32_t)ublock_sub_byte((a >>  8) & 0xFF) <<  8)
+          |  (uint32_t)ublock_sub_byte( a         & 0xFF);
 
-        b = ((uint32_t)UBLOCK_SBOX_BYTE[b >> 24]         << 24)
-          | ((uint32_t)UBLOCK_SBOX_BYTE[(b >> 16) & 0xFF] << 16)
-          | ((uint32_t)UBLOCK_SBOX_BYTE[(b >>  8) & 0xFF] <<  8)
-          |  (uint32_t)UBLOCK_SBOX_BYTE[ b         & 0xFF];
+        b = ((uint32_t)ublock_sub_byte(b >> 24)         << 24)
+          | ((uint32_t)ublock_sub_byte((b >> 16) & 0xFF) << 16)
+          | ((uint32_t)ublock_sub_byte((b >>  8) & 0xFF) <<  8)
+          |  (uint32_t)ublock_sub_byte( b         & 0xFF);
 
         /* Linear mixing layer (same sequence as T-box construction) */
         b ^= a;
@@ -212,6 +160,10 @@ static inline void ublock256_round_slow(uint32_t X0[4], uint32_t X1[4],
     ublock_perm_PL(X0, ow0);
     ublock_perm_PR(X1, ow1);
 }
+#if !REF_USE_LOOKUP_TABLES
+#define ublock256_round_w ublock256_round_slow
+#endif
+
 
 /* ================================================================== *
  *  Key-schedule helpers (unchanged algorithm, byte-level)             *
@@ -234,8 +186,8 @@ static void apply_nibble_perm(uint8_t *dst, const uint8_t *src,
 
 static inline uint8_t gf24_mul2(uint8_t b)
 {
-    return (b & 0x08) ? (uint8_t)(((b << 1) ^ 0x3) & 0x0f)
-                      : (uint8_t)( (b << 1)          & 0x0f);
+    const uint8_t mask = (uint8_t)(0u - ((b >> 3) & 1u));
+    return (uint8_t)(((b << 1) ^ (mask & 0x03u)) & 0x0fu);
 }
 
 static void apply_tk(uint8_t *data, size_t nbytes)
@@ -326,26 +278,7 @@ int ublock256_set_key(const uint8_t key[32], ublock256_key_t *ks)
     return 0;
 }
 
-/* ================================================================== *
- *  uBlock-256/256 encryption                                          *
- *                                                                     *
- *  Round scheduling:
- *                                                                     *
- *    Round  0         — ublock256_round_slow()                        *
- *                       Plaintext is attacker-known; using the fast   *
- *                       T-box here would let a Flush+Reload attacker  *
- *                       recover rk[0] one byte at a time.             *
- *                                                                     *
- *    Rounds 1 .. 22   — ublock256_round_w()  (fast T-box)            *
- *                       Intermediate state is unknown to the attacker.*
- *                                                                     *
- *    Round 23         — ublock256_round_slow()                        *
- *                       Ciphertext is attacker-known; symmetric risk  *
- *                       to round 0 on rk[23].                         *
- *                                                                     *
- *    Post-whitening   — XOR rk[24]  (unchanged)                      *
- * ================================================================== */
-
+/* Every round uses the Boolean path unless lookup tables are opted in. */
 void ublock256_256_encrypt(const uint8_t in[32], uint8_t out[32],
                            const ublock256_key_t *ks)
 {
@@ -359,7 +292,7 @@ void ublock256_256_encrypt(const uint8_t in[32], uint8_t out[32],
     /* First round: slow path (plaintext known to attacker) */
     ublock256_round_slow(X0, X1, ks->rk[0]);
 
-    /* Middle rounds: fast T-box path */
+    /* Middle rounds: selected arithmetic or legacy T-box path. */
     for (int i = 1; i < UBLOCK_ROUNDS - 1; i++)
         ublock256_round_w(X0, X1, ks->rk[i]);
 

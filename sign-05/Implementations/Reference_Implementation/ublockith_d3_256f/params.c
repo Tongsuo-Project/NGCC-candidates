@@ -1,4 +1,5 @@
 #include "params.h"
+#include "compat.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -69,12 +70,14 @@ static void init_params(params_t* params) {
   }
 }
 
+/* Each caller observes fully initialized, immutable parameters. */
+static void init_instance_params(void) {
+  init_params(&ublockith_params_d3_256f_g);
+}
+
 const params_t* ublockith_params_d3_256f(void) {
-  static int initialized = 0;
-  if (!initialized) {
-    init_params(&ublockith_params_d3_256f_g);
-    initialized = 1;
-  }
+  static ref_once_t once = REF_ONCE_INIT;
+  ref_call_once(&once, init_instance_params);
   return &ublockith_params_d3_256f_g;
 }
 

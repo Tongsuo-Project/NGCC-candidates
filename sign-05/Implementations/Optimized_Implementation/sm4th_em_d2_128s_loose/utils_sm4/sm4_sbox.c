@@ -5,10 +5,12 @@
 */
 
 #include "sm4.h"
+#include "../macros.h"
 
 #include <stdint.h>
 
-#ifdef SM4_SBOX_TABLE
+/* Use secret-indexed SM4 tables only in explicit legacy mode. */
+#if REF_USE_LOOKUP_TABLES
 
 /* ================================================================== *
  *  SM4 S-box table (byte substitution, τ)                            *
@@ -44,7 +46,7 @@ uint8_t sm4_compute_sbox(uint8_t in)
     return SM4_S[in];
 }
 
-#else  /* !SM4_SBOX_TABLE */
+#else  /* !REF_USE_LOOKUP_TABLES */
 
 /*
  * Pull in the field library and bit utilities.
@@ -118,9 +120,23 @@ static uint8_t sm4_affine(uint8_t x)
  * bf8_inv_sm4() is provided by fields.c.
  * bf8_inv_sm4(0) == 0 by convention (matches the S-box table).
  */
-uint8_t sm4_compute_sbox(uint8_t in)
+/* One unchanged no-table body; ISA selection belongs to key expansion. */
+static inline __attribute__((always_inline)) uint8_t sm4_compute_sbox_body(uint8_t in)
 {
     return sm4_affine(bf8_inv_sm4(sm4_affine(in)));
 }
 
-#endif /* SM4_SBOX_TABLE */
+uint8_t sm4_compute_sbox(uint8_t in)
+{
+    return sm4_compute_sbox_body(in);
+}
+
+#if (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((target("avx2,avx512f,avx512vl,avx512bw"), flatten))
+uint8_t sm4_compute_sbox_avx512(uint8_t in)
+{
+    return sm4_compute_sbox_body(in);
+}
+#endif
+
+#endif /* REF_USE_LOOKUP_TABLES */

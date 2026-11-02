@@ -148,6 +148,8 @@
 !/sign-05/Implementations/Reference_Implementation/ublockith_d3_256s/**
 !/sign-05/Implementations/Reference_Implementation/ublockith_em_d3_256f/**
 !/sign-05/Implementations/Reference_Implementation/ublockith_em_d3_256s/**
+!/sign-05/Implementations/README.md
+!/sign-05/Implementations/check_kat_hash.sh
 !/sign-06/Implementations/Reference_Implementation/COMPASS-SIG-128/**
 !/sign-06/Implementations/Reference_Implementation/COMPASS-SIG-256/**
 !/sign-07/Implementations/Reference_Implementation/CS-128/**
@@ -402,6 +404,8 @@
 !/sign-04/Implementations/Reference_Implementation/CEDRUSALPHA-512f/**
 !/sign-05/Implementations/Reference_Implementation/vistrutith_d3_512s/**
 !/sign-05/Implementations/Reference_Implementation/vistrutith_d3_512f/**
+!/sign-05/Implementations/Optimized_Implementation/vistrutith_d3_512s/**
+!/sign-05/Implementations/Optimized_Implementation/vistrutith_d3_512f/**
 !/sign-06/Implementations/Reference_Implementation/COMPASS-SIG-512/**
 !/sign-07/Implementations/Reference_Implementation/CS-512/**
 !/sign-08/Implementations/Reference_Implementation/DARTS512/**
@@ -515,6 +519,7 @@ id_ed25519
 !/ngcc_provider/ngcc/
 !/ngcc_provider/ngcc/metadata/
 !/ngcc_provider/ngcc/metadata/kem-41-revision.zip
+!/ngcc_provider/ngcc/metadata/sign-05-revision.zip
 !/ngcc_provider/ngcc/metadata/sign-08-revision.zip
 
 # Author optimized implementation imports

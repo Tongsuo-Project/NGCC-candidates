@@ -5,10 +5,11 @@
 */
 
 #include "sm4.h"
+#include "../macros.h"
 
 #include <stdint.h>
 
-#ifdef SM4_SBOX_TABLE
+#if REF_USE_LOOKUP_TABLES
 
 /* ================================================================== *
  *  SM4 S-box table (byte substitution, τ)                            *
@@ -44,7 +45,7 @@ uint8_t sm4_compute_sbox(uint8_t in)
     return SM4_S[in];
 }
 
-#else  /* !SM4_SBOX_TABLE */
+#else  /* !REF_USE_LOOKUP_TABLES */
 
 /*
  * Pull in the field library and bit utilities.
@@ -123,4 +124,4 @@ uint8_t sm4_compute_sbox(uint8_t in)
     return sm4_affine(bf8_inv_sm4(sm4_affine(in)));
 }
 
-#endif /* SM4_SBOX_TABLE */
+#endif /* REF_USE_LOOKUP_TABLES */

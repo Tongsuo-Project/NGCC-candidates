@@ -1,3 +1,4 @@
+/* Remove unused H0 and redundant H2 wrappers; keep transcript primitives. */
 #include <stdlib.h>
 #include <string.h>
 
@@ -5,7 +6,6 @@
 #include "params.h"
 #include "auxfunc.h"
 
-static const uint8_t domain_sep_H0   = 0;
 static const uint8_t domain_sep_H1   = 1;
 static const uint8_t domain_sep_H2_0 = 8 + 0;
 static const uint8_t domain_sep_H2_1 = 8 + 1;
@@ -80,21 +80,27 @@ void new_hash_reset(new_hash_context_t* ctx) {
 
 // input src with length, allocate more space if needed
 void new_hash_update(new_hash_context_t* ctx, const uint8_t* input, size_t input_bytes_len) {
-  if (input_bytes_len == 0 || input == NULL) {
+  if (input_bytes_len == 0) {
     return;
   }
-  if (ctx->buffer_len > SIZE_MAX - input_bytes_len - 1u) {
-    return;
+  /* This void API must stop rather than hash a truncated transcript. */
+  if (!input || ctx->buffer_len == SIZE_MAX ||
+      input_bytes_len > SIZE_MAX - ctx->buffer_len - 1u) {
+    abort();
   }
   const size_t needed = ctx->buffer_len + input_bytes_len + 1u;
   if (needed > ctx->buffer_cap) {
     size_t new_cap = ctx->buffer_cap ? ctx->buffer_cap : 64;
     while (new_cap < needed) {
-      new_cap *= 2;
+      if (new_cap > SIZE_MAX / 2u) {
+        new_cap = needed;
+        break;
+      }
+      new_cap *= 2u;
     }
     uint8_t* new_buf = realloc(ctx->buffer, new_cap);
     if (!new_buf) {
-      return;
+      abort();
     }
     ctx->buffer = new_buf;
     ctx->buffer_cap = new_cap;
@@ -109,9 +115,9 @@ void new_hash_update(new_hash_context_t* ctx, const uint8_t* input, size_t input
 void new_hash_final(new_hash_context_t* ctx, uint8_t domain_sep, size_t output_bytes_len) {
   if (ctx->output_bytes_len < output_bytes_len || ctx->output == NULL) {
     uint8_t* new_out = realloc(ctx->output, output_bytes_len);
+    /* Allocation failure cannot be represented as a valid digest. */
     if (!new_out) {
-      ctx->finalized = 0;
-      return;
+      abort();
     }
     ctx->output = new_out;
   }
@@ -119,8 +125,8 @@ void new_hash_final(new_hash_context_t* ctx, uint8_t domain_sep, size_t output_b
 
   const uint8_t* msg = ctx->buffer_len ? ctx->buffer : (const uint8_t*)"";
   if (!hash_with_domain_sep(msg, ctx->buffer_len, domain_sep, ctx->output, output_bytes_len)) {
-    ctx->finalized = 0;
-    return;
+    /* A failed backend must never supply a digest to the protocol. */
+    abort();
   }
   ctx->output_off = 0;
   ctx->finalized = 1;
@@ -128,20 +134,18 @@ void new_hash_final(new_hash_context_t* ctx, uint8_t domain_sep, size_t output_b
 
 // squeeze outputs with claimed length into dst, used when splited result is needed
 void new_hash_squeeze(new_hash_context_t* ctx, uint8_t* dst, size_t len) {
-  if (!dst || !len) {
+  if (!len) {
     return;
   }
   const size_t remaining = ctx->output_bytes_len > ctx->output_off
                                ? ctx->output_bytes_len - ctx->output_off
                                : 0;
-  const size_t take = len > remaining ? remaining : len;
-  if (take) {
-    memcpy(dst, ctx->output + ctx->output_off, take);
+  /* Reject absent or undersized digests instead of padding with zeros. */
+  if (!dst || !ctx->finalized || !ctx->output || len > remaining) {
+    abort();
   }
-  ctx->output_off += take;
-  if (len > take) {
-    memset(dst + take, 0, len - take);
-  }
+  memcpy(dst, ctx->output + ctx->output_off, len);
+  ctx->output_off += len;
 }
 
 void new_hash_clear(new_hash_context_t* ctx) {
@@ -162,26 +166,6 @@ void new_hash_clear(new_hash_context_t* ctx) {
 
 // H_0, used for generating uhash in BAVC.commit
 // length is 3lambda * tau bits
-void H0_init(H0_context_t* ctx) {
-  new_hash_init(ctx);
-}
-
-void H0_update(H0_context_t* ctx, const uint8_t* input, size_t bytes_len) {
-  new_hash_update(ctx, input, bytes_len);
-}
-
-void H0_final_for_squeeze(const params_t* params, H0_context_t* ctx) {
-  const size_t out_bytes_len = 3u * params->lambda_bytes * params->tau;
-  new_hash_final(ctx, domain_sep_H0, out_bytes_len);
-}
-
-void H0_squeeze(H0_context_t* H0_ctx, uint8_t* dst, size_t bytes_len) {
-  new_hash_squeeze(H0_ctx, dst, bytes_len);
-}
-
-void H0_clear(H0_context_t* H0_ctx) {
-  new_hash_clear(H0_ctx);
-}
 
 // H_1, used for leaf commit in BAVC.Commit
 // lenght is 2lambda bits
@@ -233,40 +217,8 @@ void H2_init(H2_context_t* ctx) {
   new_hash_init(ctx);
 }
 
-void H2_copy(H2_context_t* new_ctx, const H2_context_t* ctx) {
-  new_hash_init(new_ctx);
-
-  if (ctx->buffer_len) {
-    new_ctx->buffer = malloc(ctx->buffer_len);
-    if (new_ctx->buffer) {
-      memcpy(new_ctx->buffer, ctx->buffer, ctx->buffer_len);
-      new_ctx->buffer_len = ctx->buffer_len;
-      new_ctx->buffer_cap = ctx->buffer_len;
-    }
-  }
-
-  if (ctx->output_bytes_len) {
-    new_ctx->output = malloc(ctx->output_bytes_len);
-    if (new_ctx->output) {
-      memcpy(new_ctx->output, ctx->output, ctx->output_bytes_len);
-      new_ctx->output_bytes_len = ctx->output_bytes_len;
-      new_ctx->output_off = ctx->output_off;
-    }
-  }
-  new_ctx->finalized = ctx->finalized;
-}
-
 void H2_update(H2_context_t* ctx, const uint8_t* src, size_t bytes_len) {
   new_hash_update(ctx, src, bytes_len);
-}
-
-void H2_update_u32_le(H2_context_t* ctx, uint32_t v) {
-  uint8_t tmp[4];
-  tmp[0] = (uint8_t)(v);
-  tmp[1] = (uint8_t)(v >> 8);
-  tmp[2] = (uint8_t)(v >> 16);
-  tmp[3] = (uint8_t)(v >> 24);
-  new_hash_update(ctx, tmp, sizeof(tmp));
 }
 
 void H2_0_final(const params_t* params, H2_context_t* ctx, uint8_t* digest) {
@@ -304,9 +256,9 @@ void H2_3_final_u32_le(const params_t* params, const H2_context_t* ctx, uint32_t
   const size_t msg_len = base_len + 4u;
   uint8_t stack_buf[1024];
   uint8_t* msg = msg_len <= sizeof(stack_buf) ? stack_buf : malloc(msg_len);
+  /* Never substitute an all-zero challenge on allocation failure. */
   if (!msg) {
-    memset(digest, 0, out_bytes_len);
-    return;
+    abort();
   }
   if (base_len) {
     memcpy(msg, ctx->buffer, base_len);
@@ -316,7 +268,7 @@ void H2_3_final_u32_le(const params_t* params, const H2_context_t* ctx, uint32_t
   msg[base_len + 2] = (uint8_t)(ctr >> 16);
   msg[base_len + 3] = (uint8_t)(ctr >> 24);
   if (!hash_with_domain_sep(msg, msg_len, domain_sep_H2_3, digest, out_bytes_len)) {
-    memset(digest, 0, out_bytes_len);
+    abort();
   }
   if (msg != stack_buf) {
     free(msg);

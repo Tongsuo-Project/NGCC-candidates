@@ -5,14 +5,11 @@
  */
 
 #include "fields.h"
+#include "x86_caps.h"
+/* Both the scalar and PCLMUL field paths avoid secret-indexed tables. */
 #include "utils.h"
 
-#if defined(__x86_64__) && defined(__PCLMUL__) && defined(SM4TH_FIELD_PCLMUL)
-#include <wmmintrin.h>
-#endif
 
-// GF(2^8) with X^8 + X^4 + X^3 + X^1 + 1
-#define bf8_modulus (UINT8_C((1 << 4) | (1 << 3) | (1 << 1) | 1))
 // GF(2^64) with X^64 + X^4 + X^3 + X^1 + 1
 #define bf64_modulus (UINT64_C((1 << 4) | (1 << 3) | (1 << 1) | 1))
 // GF(2^128) with X^128 + X^7 + X^2 + X^1 + 1
@@ -22,92 +19,12 @@
   ((UINT64_C(x7) << 56) | (UINT64_C(x6) << 48) | (UINT64_C(x5) << 40) | (UINT64_C(x4) << 32) |     \
    (UINT64_C(x3) << 24) | (UINT64_C(x2) << 16) | (UINT64_C(x1) << 8) | UINT64_C(x0))
 
-uint8_t bits_sq(uint8_t x) {
-  uint8_t res = set_bit(get_bit(x, 0) ^ get_bit(x, 4) ^ get_bit(x, 6), 0);
-  res |= set_bit(get_bit(x, 4) ^ get_bit(x, 6) ^ get_bit(x, 7), 1);
-  res |= set_bit(get_bit(x, 1) ^ get_bit(x, 5), 2);
-  res |= set_bit(get_bit(x, 4) ^ get_bit(x, 5) ^ get_bit(x, 6) ^ get_bit(x, 7), 3);
-  res |= set_bit(get_bit(x, 2) ^ get_bit(x, 4) ^ get_bit(x, 7), 4);
-  res |= set_bit(get_bit(x, 5) ^ get_bit(x, 6), 5);
-  res |= set_bit(get_bit(x, 3) ^ get_bit(x, 5), 6);
-  res |= set_bit(get_bit(x, 6) ^ get_bit(x, 7), 7);
-  return res;
-}
-
 // GF(2^64) implementation
 
-#if defined(__x86_64__) && defined(__PCLMUL__) && defined(SM4TH_FIELD_PCLMUL)
-bf64_t bf64_mul(bf64_t lhs, bf64_t rhs) {
-  const __m128i a = _mm_set_epi64x(0, (long long)lhs);
-  const __m128i b = _mm_set_epi64x(0, (long long)rhs);
-  const __m128i r = _mm_set_epi64x(0, (long long)bf64_modulus);
-
-  uint64_t p[2];
-  _mm_storeu_si128((__m128i*)p, _mm_clmulepi64_si128(a, b, 0x00));
-  uint64_t lo = p[0];
-  uint64_t hi = p[1];
-
-  uint64_t q[2];
-  _mm_storeu_si128((__m128i*)q,
-                   _mm_clmulepi64_si128(_mm_set_epi64x(0, (long long)hi), r, 0x00));
-  lo ^= q[0];
-
-  /* q[1] has degree <= 3; one extra fold is sufficient. */
-  if (q[1]) {
-    uint64_t q2[2];
-    _mm_storeu_si128((__m128i*)q2,
-                     _mm_clmulepi64_si128(_mm_set_epi64x(0, (long long)q[1]), r, 0x00));
-    lo ^= q2[0];
-  }
-  return lo;
-}
-#else
-bf64_t bf64_mul(bf64_t lhs, bf64_t rhs) {
-  bf64_t result = (-(rhs & 1)) & lhs;
-  for (unsigned int idx = 1; idx != 64; ++idx) {
-    const uint64_t mask = -((lhs >> 63) & 1);
-    lhs                 = (lhs << 1) ^ (mask & bf64_modulus);
-    result ^= (-((rhs >> idx) & 1)) & lhs;
-  }
-  return result;
-}
-#endif
-
-#define bf64_bit_to_mask(value, bit) -((((uint64_t)(value)) >> (bit)) & 1)
-
-// GF(2^128) implementation
-
-static const bf128_t bf128_alpha[7] = {
-    BF128C(U64C(0x0d, 0xce, 0x60, 0x55, 0xac, 0xe8, 0x3f, 0xa1),
-           U64C(0x1c, 0x9a, 0x97, 0xa9, 0x55, 0x85, 0x3d, 0x05)),
-    BF128C(U64C(0xe1, 0xae, 0x88, 0x34, 0xca, 0x59, 0x77, 0xec),
-           U64C(0x84, 0xbb, 0xbf, 0x9c, 0x43, 0xb7, 0xf4, 0x4c)),
-    BF128C(U64C(0xa8, 0x46, 0x39, 0x36, 0xae, 0x02, 0xcf, 0xbf),
-           U64C(0xc6, 0xd2, 0x51, 0x7d, 0x4f, 0x60, 0xad, 0x35)),
-    BF128C(U64C(0x49, 0x98, 0x2e, 0x3c, 0x48, 0x30, 0x83, 0x6b),
-           U64C(0xfe, 0x22, 0xa2, 0x40, 0x46, 0x36, 0xcb, 0x0d)),
-    BF128C(U64C(0xb4, 0x82, 0x1b, 0x7b, 0x27, 0x49, 0x2b, 0x25),
-           U64C(0xa5, 0xde, 0x88, 0x1a, 0xe1, 0x10, 0x98, 0x54)),
-    BF128C(U64C(0x22, 0xff, 0x21, 0x25, 0xef, 0xf2, 0x2b, 0xc7),
-           U64C(0x75, 0x1f, 0x0c, 0x6c, 0x68, 0xa5, 0x81, 0xd6)),
-    BF128C(U64C(0xbc, 0xf9, 0x36, 0xe1, 0x94, 0x8e, 0x7a, 0x7a),
-           U64C(0xe0, 0x8f, 0xb7, 0x4f, 0x1a, 0x31, 0x50, 0x09)),
-};
-
-/* bf128_byte_combine: out = x[0] + x[1]*alpha[0] + ... + x[7]*alpha[6]
- *
- * PCLMUL path: all 7 products x[i]*alpha[i-1] are issued as independent
- * 128×128→256-bit carryless multiplications with no inter-product dependency,
- * letting the CPU's OOO engine overlap the ~7-cycle PCLMUL latency across all
- * seven pairs simultaneously.  Partial products (lo/hi halves) are XORed
- * together and the combined degree-255 polynomial is reduced mod p in a single
- * two-step pass rather than reducing after every multiplication.
- *
- * Scalar path: unchanged loop over bf128_mul.
- */
-#if defined(__x86_64__) && defined(__PCLMUL__) && defined(SM4TH_FIELD_PCLMUL)
-/* Helper: 128×128 → (lo128, hi128) without reduction */
-static inline void bf128_clmul_lo_hi(const bf128_t* a, const bf128_t* b,
+/* Retain ISA kernels behind a baseline runtime gate. */
+#if SM4TH_COMPILE_PCLMUL
+#include <immintrin.h>
+SM4TH_TARGET_PCLMUL static inline void bf128_clmul_lo_hi(const bf128_t* a, const bf128_t* b,
                                      __m128i* lo, __m128i* hi) {
   __m128i va = _mm_loadu_si128((const __m128i*)a->values);
   __m128i vb = _mm_loadu_si128((const __m128i*)b->values);
@@ -119,7 +36,7 @@ static inline void bf128_clmul_lo_hi(const bf128_t* a, const bf128_t* b,
   *hi = _mm_xor_si128(r11, _mm_srli_si128(mid, 8));
 }
 
-static inline bf128_t bf128_byte_combine_pclmul(const bf128_t* x, const bf128_t* alpha) {
+SM4TH_TARGET_PCLMUL static inline bf128_t bf128_byte_combine_pclmul(const bf128_t* x, const bf128_t* alpha) {
   /* Issue all 7 products independently so the CPU can pipeline them */
   __m128i lo[7], hi[7];
   for (unsigned int i = 0; i < 7; ++i) {
@@ -151,38 +68,53 @@ static inline bf128_t bf128_byte_combine_pclmul(const bf128_t* x, const bf128_t*
   _mm_storeu_si128((__m128i*)out.values, acc_lo);
   return out;
 }
+#endif
 
-bf128_t bf128_byte_combine(const bf128_t* x) {
-  return bf128_byte_combine_pclmul(x, bf128_alpha);
-}
-#else
-bf128_t bf128_byte_combine(const bf128_t* x) {
-  bf128_t bf_out = x[0];
-  for (unsigned int i = 1; i < 8; ++i) {
-    bf_out = bf128_add(bf_out, bf128_mul(x[i], bf128_alpha[i - 1]));
+#if SM4TH_COMPILE_PCLMUL
+SM4TH_TARGET_PCLMUL static bf64_t bf64_mul_pclmul(bf64_t lhs, bf64_t rhs) {
+  const __m128i a = _mm_set_epi64x(0, (long long)lhs);
+  const __m128i b = _mm_set_epi64x(0, (long long)rhs);
+  const __m128i r = _mm_set_epi64x(0, (long long)bf64_modulus);
+
+  uint64_t p[2];
+  _mm_storeu_si128((__m128i*)p, _mm_clmulepi64_si128(a, b, 0x00));
+  uint64_t lo = p[0];
+  uint64_t hi = p[1];
+
+  uint64_t q[2];
+  _mm_storeu_si128((__m128i*)q,
+                   _mm_clmulepi64_si128(_mm_set_epi64x(0, (long long)hi), r, 0x00));
+  lo ^= q[0];
+
+  /* q[1] has degree <= 3; one extra fold is sufficient. */
+  if (q[1]) {
+    uint64_t q2[2];
+    _mm_storeu_si128((__m128i*)q2,
+                     _mm_clmulepi64_si128(_mm_set_epi64x(0, (long long)q[1]), r, 0x00));
+    lo ^= q2[0];
   }
-  return bf_out;
+  return lo;
 }
 #endif
 
-void bf128_sq_bit(bf128_t* out_tag, const bf128_t* in_tag) {
-  out_tag[0] = bf128_add(in_tag[0], bf128_add(in_tag[4], in_tag[6]));
-  out_tag[1] = bf128_add(in_tag[4], bf128_add(in_tag[6], in_tag[7]));
-  out_tag[2] = bf128_add(in_tag[1], in_tag[5]);
-  out_tag[3] = bf128_add(bf128_add(in_tag[4], in_tag[5]), bf128_add(in_tag[6], in_tag[7]));
-  out_tag[4] = bf128_add(in_tag[2], bf128_add(in_tag[4], in_tag[7]));
-  out_tag[5] = bf128_add(in_tag[5], in_tag[6]);
-  out_tag[6] = bf128_add(in_tag[3], in_tag[5]);
-  out_tag[7] = bf128_add(in_tag[6], in_tag[7]);
+bf64_t bf64_mul(bf64_t lhs, bf64_t rhs) {
+#if SM4TH_COMPILE_PCLMUL
+  if (sm4th_x86_has_pclmul()) { return bf64_mul_pclmul(lhs, rhs); }
+#endif
+  bf64_t result = (-(rhs & 1)) & lhs;
+  for (unsigned int idx = 1; idx != 64; ++idx) {
+    const uint64_t mask = -((lhs >> 63) & 1);
+    lhs                 = (lhs << 1) ^ (mask & bf64_modulus);
+    result ^= (-((rhs >> idx) & 1)) & lhs;
+  }
+  return result;
 }
 
-bf128_t bf128_byte_combine_bits(uint8_t x) {
-  bf128_t bf_out = bf128_from_bit(get_bit(x, 0));
-  for (unsigned int i = 1; i < 8; ++i) {
-    bf_out = bf128_add(bf_out, bf128_mul_bit(bf128_alpha[i - 1], get_bit(x, i)));
-  }
-  return bf_out;
-}
+#define bf64_bit_to_mask(value, bit) -((((uint64_t)(value)) >> (bit)) & 1)
+
+// GF(2^128) implementation
+
+/* Only SM4 byte embeddings are used by this instance. */
 
 static inline bf128_t bf128_and_64(bf128_t lhs, bf64_t rhs) {
   for (unsigned int i = 0; i != ARRAY_SIZE(lhs.values); ++i) {
@@ -204,17 +136,8 @@ static inline uint64_t bf128_bit_to_uint64_mask(bf128_t value, unsigned int bit)
   return -((BF_VALUE(value, byte_idx) >> bit_idx) & 1);
 }
 
-#if defined(__x86_64__) && defined(__PCLMUL__) && defined(SM4TH_FIELD_PCLMUL)
-#include <wmmintrin.h>
-
-static inline void xor_m128i_to_array(uint64_t* C, int idx, __m128i r) {
-    uint64_t tmp[2];
-    _mm_storeu_si128((__m128i*)tmp, r);
-    C[idx] ^= tmp[0];
-    C[idx+1] ^= tmp[1];
-}
-
-bf128_t bf128_mul(bf128_t lhs, bf128_t rhs) {
+#if SM4TH_COMPILE_PCLMUL
+SM4TH_TARGET_PCLMUL static bf128_t bf128_mul_pclmul(bf128_t lhs, bf128_t rhs) {
     __m128i a = _mm_loadu_si128((const __m128i*)&lhs.values[0]);
     __m128i b = _mm_loadu_si128((const __m128i*)&rhs.values[0]);
 
@@ -241,8 +164,25 @@ bf128_t bf128_mul(bf128_t lhs, bf128_t rhs) {
     _mm_storeu_si128((__m128i*)&out.values[0], c01);
     return out;
 }
+#endif
 
-bf128_t bf128_mul_64(bf128_t lhs, bf64_t rhs) {
+bf128_t bf128_mul(bf128_t lhs, bf128_t rhs) {
+#if SM4TH_COMPILE_PCLMUL
+  if (sm4th_x86_has_pclmul()) { return bf128_mul_pclmul(lhs, rhs); }
+#endif
+  bf128_t result = bf128_and_64(lhs, bf128_bit_to_uint64_mask(rhs, 0));
+  for (unsigned int idx = 1; idx != 128; ++idx) {
+    const uint64_t mask = bf128_bit_to_uint64_mask(lhs, 128 - 1);
+    lhs                 = bf128_shift_left_1(lhs);
+    BF_VALUE(lhs, 0) ^= (mask & bf128_modulus);
+
+    result = bf128_add(result, bf128_and_64(lhs, bf128_bit_to_uint64_mask(rhs, idx)));
+  }
+  return result;
+}
+
+#if SM4TH_COMPILE_PCLMUL
+SM4TH_TARGET_PCLMUL static bf128_t bf128_mul_64_pclmul(bf128_t lhs, bf64_t rhs) {
     __m128i a = _mm_loadu_si128((const __m128i*)&lhs.values[0]);
     __m128i b = _mm_set_epi64x(0, rhs);
 
@@ -260,20 +200,12 @@ bf128_t bf128_mul_64(bf128_t lhs, bf64_t rhs) {
     _mm_storeu_si128((__m128i*)&out.values[0], c01);
     return out;
 }
-#else
-bf128_t bf128_mul(bf128_t lhs, bf128_t rhs) {
-  bf128_t result = bf128_and_64(lhs, bf128_bit_to_uint64_mask(rhs, 0));
-  for (unsigned int idx = 1; idx != 128; ++idx) {
-    const uint64_t mask = bf128_bit_to_uint64_mask(lhs, 128 - 1);
-    lhs                 = bf128_shift_left_1(lhs);
-    BF_VALUE(lhs, 0) ^= (mask & bf128_modulus);
-
-    result = bf128_add(result, bf128_and_64(lhs, bf128_bit_to_uint64_mask(rhs, idx)));
-  }
-  return result;
-}
+#endif
 
 bf128_t bf128_mul_64(bf128_t lhs, bf64_t rhs) {
+#if SM4TH_COMPILE_PCLMUL
+  if (sm4th_x86_has_pclmul()) { return bf128_mul_64_pclmul(lhs, rhs); }
+#endif
   bf128_t result = bf128_and_64(lhs, bf64_bit_to_mask(rhs, 0));
   for (unsigned int idx = 1; idx != 64; ++idx) {
     const uint64_t mask = bf128_bit_to_uint64_mask(lhs, 128 - 1);
@@ -284,7 +216,6 @@ bf128_t bf128_mul_64(bf128_t lhs, bf64_t rhs) {
   }
   return result;
 }
-#endif
 
 bf128_t bf128_mul_bit(bf128_t lhs, uint8_t rhs) {
   return bf128_and_64(lhs, -((uint64_t)rhs & 1));
@@ -394,7 +325,8 @@ bf8_t bf8_square_sm4(bf8_t lhs) {
     return result;
 }
 
-bf8_t bf8_inv_sm4(bf8_t in) {
+/* Keep one external definition while exposing the existing body to LTO. */
+inline __attribute__((always_inline)) bf8_t bf8_inv_sm4(bf8_t in) {
     const bf8_t t2   = bf8_square_sm4(in);          /* in^2   */
     const bf8_t t3   = bf8_mul_sm4(in, t2);         /* in^3   */
     const bf8_t t5   = bf8_mul_sm4(t3, t2);         /* in^5   */
@@ -412,12 +344,16 @@ bf8_t bf8_inv_sm4(bf8_t in) {
 /*  SM4-specific bf128 squaring operations                           */
 /* ================================================================ */
 
-#if defined(__x86_64__) && defined(__PCLMUL__) && defined(SM4TH_FIELD_PCLMUL)
-bf128_t bf128_byte_combine_sm4(const bf128_t* x) {
+#if SM4TH_COMPILE_PCLMUL
+SM4TH_TARGET_PCLMUL static bf128_t bf128_byte_combine_sm4_pclmul(const bf128_t* x) {
   return bf128_byte_combine_pclmul(x, bf128_alpha_sm4_powers);
 }
-#else
+#endif
+
 bf128_t bf128_byte_combine_sm4(const bf128_t* x) {
+#if SM4TH_COMPILE_PCLMUL
+  if (sm4th_x86_has_pclmul()) { return bf128_byte_combine_sm4_pclmul(x); }
+#endif
   /* Combine 8 bf128_t elements using SM4-specific alpha coefficients */
   bf128_t bf_out = x[0];
   for (unsigned int i = 1; i < 8; ++i) {
@@ -425,7 +361,6 @@ bf128_t bf128_byte_combine_sm4(const bf128_t* x) {
   }
   return bf_out;
 }
-#endif
 
 bf128_t bf128_byte_combine_bits_sm4(uint8_t x) {
     /* Embedding: φ(x) = Σ_{i=0}^{7} bit_i(x) * α_8^i
@@ -491,72 +426,30 @@ void bf128_sq_bit_inplace_sm4(bf128_t *tag) {
     tag[7]           = bf128_add(i4, i6);
 }
 
-bf128_t bf128_byte_combine_sq_sm4(const bf128_t* x) {
+#if SM4TH_COMPILE_PCLMUL
+SM4TH_TARGET_PCLMUL static bf128_t bf128_byte_combine_sq_sm4_pclmul(const bf128_t* x) {
   bf128_t tmp[8];
   bf128_sq_bit_sm4(tmp, x);
-#if defined(__x86_64__) && defined(__PCLMUL__) && defined(SM4TH_FIELD_PCLMUL)
   return bf128_byte_combine_pclmul(tmp, bf128_alpha_sm4_powers);
-#else
+}
+#endif
+
+bf128_t bf128_byte_combine_sq_sm4(const bf128_t* x) {
+#if SM4TH_COMPILE_PCLMUL
+  if (sm4th_x86_has_pclmul()) { return bf128_byte_combine_sq_sm4_pclmul(x); }
+#endif
+  bf128_t tmp[8];
+  bf128_sq_bit_sm4(tmp, x);
   /* Combine using SM4-specific alpha coefficients */
   bf128_t bf_out = tmp[0];
   for (unsigned int i = 1; i < 8; ++i) {
     bf_out = bf128_add(bf_out, bf128_mul(tmp[i], bf128_alpha_sm4_powers[i - 1]));
   }
   return bf_out;
-#endif
 }
 
 bf128_t bf128_byte_combine_bits_sq_sm4(uint8_t x) {
   return bf128_byte_combine_bits_sm4(bits_sq_sm4(x));
 }
 
-/* ================================================================ */
-/*  Random Number Generation for Field Elements                    */
-/* ================================================================ */
-
-/* Internal pseudo-random state using linear congruential generator */
-static uint64_t prng_state = 0xDEADBEEFDEADBEEFULL;
-
-/**
- * Initialize PRNG with a seed value
- * For cryptographic use, this should be seeded from a proper RNG source
- */
-void bf_random_seed(uint64_t seed) {
-    prng_state = seed ? seed : 0xDEADBEEFDEADBEEFULL;
-}
-
-/**
- * Simple pseudo-random number generator using linear congruential method
- * Parameters from Numerical Recipes
- */
-static uint64_t bf_random_u64(void) {
-    /* Linear congruential generator: x_{n+1} = (a*x_n + c) mod m */
-    const uint64_t a = UINT64_C(2685821657736338717);
-    const uint64_t c = UINT64_C(2246822519);
-    prng_state = a * prng_state + c;
-    return prng_state;
-}
-
-/**
- * Generate a random GF(2^8) element
- */
-bf8_t bf8_random(void) {
-    return (uint8_t)(bf_random_u64() & 0xFF);
-}
-
-/**
- * Generate a random GF(2^64) element
- */
-bf64_t bf64_random(void) {
-    return bf_random_u64();
-}
-
-/**
- * Generate a random GF(2^128) element
- */
-bf128_t bf128_random(void) {
-    bf128_t result;
-    result.values[0] = bf_random_u64();
-    result.values[1] = bf_random_u64();
-    return result;
-}
+/* Unused field-only pseudo-random helpers were removed. */

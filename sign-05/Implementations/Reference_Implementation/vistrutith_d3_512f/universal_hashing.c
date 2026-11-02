@@ -10,109 +10,86 @@
 static inline unsigned int vh_lambda_bytes(void) { return BF512_NUM_BYTES; }
 static inline unsigned int vh_lambda_bits(void) { return BF512_NUM_BYTES * 8u; }
 
-static bf64_t compute_h1(const uint8_t* t, const uint8_t* x, unsigned int ell) {
-  const bf64_t b_t = bf64_load(t);
-  const unsigned int lambda_bytes = vh_lambda_bytes();
+/* Hash only x0_bits prefix bits, then XOR the final lambda+B bits. */
+static inline bf64_t vh_h1_word(const uint8_t* x, unsigned int x0_bits,
+                                size_t total_words, size_t word) {
+  const size_t offset = (total_words - 1u - word) * 8u;
+  const size_t prefix_bytes = x0_bits / 8u;
+  if (offset + 8u <= prefix_bytes) {
+    return bf64_load(x + offset);
+  }
+  uint8_t tmp[8] = {0};
+  if (offset < prefix_bytes) {
+    memcpy(tmp, x + offset, prefix_bytes - offset);
+  }
+  return bf64_load(tmp);
+}
+
+static bf64_t compute_h1(const uint8_t* t, const uint8_t* x, unsigned int x0_bits) {
+  /* Evaluate h1 over contiguous padded x0 words in every lane. */
   const unsigned int lambda = vh_lambda_bits();
-  const unsigned int length_lambda = (ell + 3 * lambda - 1) / lambda;
-
-  uint8_t tmp[BF512_NUM_BYTES] = {0};
-  const size_t tail_bytes =
-      (ell + lambda) % lambda == 0 ? lambda_bytes : ((ell + lambda) % lambda) / 8;
-  memcpy(tmp, x + (length_lambda - 1) * lambda_bytes, tail_bytes);
-
-  bf64_t h1        = bf64_zero();
+  const size_t padded_bytes = ((x0_bits + lambda - 1u) / lambda) * (lambda / 8u);
+  const size_t total_words = (padded_bytes + 7u) / 8u;
+  const bf64_t b_t = bf64_load(t);
   bf64_t running_t = bf64_one();
-  unsigned int i   = 0;
-  for (; i < lambda_bytes; i += 8, running_t = bf64_mul(running_t, b_t)) {
-    h1 = bf64_add(h1, bf64_mul(running_t, bf64_load(tmp + (lambda_bytes - i - 8))));
+  const uint8_t* lanes[1] = {x};
+  bf64_t accum[1] = {bf64_zero()};
+  for (size_t word = 0; word < total_words; ++word, running_t = bf64_mul(running_t, b_t)) {
+    const bf64_t coeff = running_t;
+    for (size_t lane = 0; lane < 1u; ++lane) {
+      const bf64_t v = vh_h1_word(lanes[lane], x0_bits, total_words, word);
+      accum[lane] = bf64_add(accum[lane], bf64_mul(coeff, v));
+    }
   }
-  for (; i < length_lambda * lambda_bytes; i += 8, running_t = bf64_mul(running_t, b_t)) {
-    h1 = bf64_add(h1, bf64_mul(running_t, bf64_load(x + (length_lambda * lambda_bytes - i - 8))));
-  }
-  return h1;
+  return accum[0];
 }
 
 static inline void compute_h1_2(const uint8_t* t, const uint8_t* x0, const uint8_t* x1,
-                                unsigned int ell, bf64_t* h1_0, bf64_t* h1_1) {
-  const bf64_t b_t = bf64_load(t);
-  const unsigned int lambda_bytes = vh_lambda_bytes();
+                                unsigned int x0_bits, bf64_t* h1_0, bf64_t* h1_1) {
+  /* Evaluate h1 over contiguous padded x0 words in every lane. */
   const unsigned int lambda = vh_lambda_bits();
-  const unsigned int length_lambda = (ell + 3 * lambda - 1) / lambda;
-  const size_t tail_bytes =
-      (ell + lambda) % lambda == 0 ? lambda_bytes : ((ell + lambda) % lambda) / 8;
-
-  uint8_t tmp0[BF512_NUM_BYTES] = {0};
-  uint8_t tmp1[BF512_NUM_BYTES] = {0};
-  memcpy(tmp0, x0 + (length_lambda - 1) * lambda_bytes, tail_bytes);
-  memcpy(tmp1, x1 + (length_lambda - 1) * lambda_bytes, tail_bytes);
-
-  bf64_t h0 = bf64_zero();
-  bf64_t h1 = bf64_zero();
+  const size_t padded_bytes = ((x0_bits + lambda - 1u) / lambda) * (lambda / 8u);
+  const size_t total_words = (padded_bytes + 7u) / 8u;
+  const bf64_t b_t = bf64_load(t);
   bf64_t running_t = bf64_one();
-  unsigned int i = 0;
-  for (; i < lambda_bytes; i += 8, running_t = bf64_mul(running_t, b_t)) {
-    const size_t off = lambda_bytes - i - 8;
-    h0 = bf64_add(h0, bf64_mul(running_t, bf64_load(tmp0 + off)));
-    h1 = bf64_add(h1, bf64_mul(running_t, bf64_load(tmp1 + off)));
+  const uint8_t* lanes[2] = {x0, x1};
+  bf64_t accum[2] = {bf64_zero(), bf64_zero()};
+  for (size_t word = 0; word < total_words; ++word, running_t = bf64_mul(running_t, b_t)) {
+    const bf64_t coeff = running_t;
+    for (size_t lane = 0; lane < 2u; ++lane) {
+      const bf64_t v = vh_h1_word(lanes[lane], x0_bits, total_words, word);
+      accum[lane] = bf64_add(accum[lane], bf64_mul(coeff, v));
+    }
   }
-  for (; i < length_lambda * lambda_bytes; i += 8, running_t = bf64_mul(running_t, b_t)) {
-    const size_t off = length_lambda * lambda_bytes - i - 8;
-    h0 = bf64_add(h0, bf64_mul(running_t, bf64_load(x0 + off)));
-    h1 = bf64_add(h1, bf64_mul(running_t, bf64_load(x1 + off)));
-  }
-
-  *h1_0 = h0;
-  *h1_1 = h1;
+  *h1_0 = accum[0];
+  *h1_1 = accum[1];
 }
 
 static inline void compute_h1_4(const uint8_t* t, const uint8_t* x0, const uint8_t* x1,
-                                const uint8_t* x2, const uint8_t* x3, unsigned int ell,
+                                const uint8_t* x2, const uint8_t* x3, unsigned int x0_bits,
                                 bf64_t* h1_0, bf64_t* h1_1, bf64_t* h1_2, bf64_t* h1_3) {
-  const bf64_t b_t = bf64_load(t);
-  const unsigned int lambda_bytes = vh_lambda_bytes();
+  /* Evaluate h1 over contiguous padded x0 words in every lane. */
   const unsigned int lambda = vh_lambda_bits();
-  const unsigned int length_lambda = (ell + 3 * lambda - 1) / lambda;
-  const size_t tail_bytes =
-      (ell + lambda) % lambda == 0 ? lambda_bytes : ((ell + lambda) % lambda) / 8;
-
-  uint8_t tmp0[BF512_NUM_BYTES] = {0};
-  uint8_t tmp1[BF512_NUM_BYTES] = {0};
-  uint8_t tmp2[BF512_NUM_BYTES] = {0};
-  uint8_t tmp3[BF512_NUM_BYTES] = {0};
-  memcpy(tmp0, x0 + (length_lambda - 1) * lambda_bytes, tail_bytes);
-  memcpy(tmp1, x1 + (length_lambda - 1) * lambda_bytes, tail_bytes);
-  memcpy(tmp2, x2 + (length_lambda - 1) * lambda_bytes, tail_bytes);
-  memcpy(tmp3, x3 + (length_lambda - 1) * lambda_bytes, tail_bytes);
-
-  bf64_t h0 = bf64_zero();
-  bf64_t h1 = bf64_zero();
-  bf64_t h2 = bf64_zero();
-  bf64_t h3 = bf64_zero();
+  const size_t padded_bytes = ((x0_bits + lambda - 1u) / lambda) * (lambda / 8u);
+  const size_t total_words = (padded_bytes + 7u) / 8u;
+  const bf64_t b_t = bf64_load(t);
   bf64_t running_t = bf64_one();
-  unsigned int i = 0;
-  for (; i < lambda_bytes; i += 8, running_t = bf64_mul(running_t, b_t)) {
-    const size_t off = lambda_bytes - i - 8;
-    h0 = bf64_add(h0, bf64_mul(running_t, bf64_load(tmp0 + off)));
-    h1 = bf64_add(h1, bf64_mul(running_t, bf64_load(tmp1 + off)));
-    h2 = bf64_add(h2, bf64_mul(running_t, bf64_load(tmp2 + off)));
-    h3 = bf64_add(h3, bf64_mul(running_t, bf64_load(tmp3 + off)));
+  const uint8_t* lanes[4] = {x0, x1, x2, x3};
+  bf64_t accum[4] = {bf64_zero(), bf64_zero(), bf64_zero(), bf64_zero()};
+  for (size_t word = 0; word < total_words; ++word, running_t = bf64_mul(running_t, b_t)) {
+    const bf64_t coeff = running_t;
+    for (size_t lane = 0; lane < 4u; ++lane) {
+      const bf64_t v = vh_h1_word(lanes[lane], x0_bits, total_words, word);
+      accum[lane] = bf64_add(accum[lane], bf64_mul(coeff, v));
+    }
   }
-  for (; i < length_lambda * lambda_bytes; i += 8, running_t = bf64_mul(running_t, b_t)) {
-    const size_t off = length_lambda * lambda_bytes - i - 8;
-    h0 = bf64_add(h0, bf64_mul(running_t, bf64_load(x0 + off)));
-    h1 = bf64_add(h1, bf64_mul(running_t, bf64_load(x1 + off)));
-    h2 = bf64_add(h2, bf64_mul(running_t, bf64_load(x2 + off)));
-    h3 = bf64_add(h3, bf64_mul(running_t, bf64_load(x3 + off)));
-  }
-
-  *h1_0 = h0;
-  *h1_1 = h1;
-  *h1_2 = h2;
-  *h1_3 = h3;
+  *h1_0 = accum[0];
+  *h1_1 = accum[1];
+  *h1_2 = accum[2];
+  *h1_3 = accum[3];
 }
 
-int vole_hash_precompute_init(vole_hash_precomp_t* ctx, const uint8_t* sd, unsigned int ell,
+int vole_hash_precompute_init(vole_hash_precomp_t* ctx, const uint8_t* sd, unsigned int x0_bits,
                               uint32_t lambda) {
   if (!ctx || !sd || lambda != 512u) {
     return 0;
@@ -120,12 +97,13 @@ int vole_hash_precompute_init(vole_hash_precomp_t* ctx, const uint8_t* sd, unsig
 
   memset(ctx, 0, sizeof(*ctx));
   ctx->sd = sd;
-  ctx->ell = ell;
-  ctx->length_lambda = (ell + 3u * vh_lambda_bits() - 1u) / vh_lambda_bits();
-  ctx->last_bytes = ((ell + vh_lambda_bits()) % vh_lambda_bits() == 0u)
+  /* Precompute using the same prefix split as scalar and batch hashes. */
+  ctx->x0_bits = x0_bits;
+  ctx->length_lambda = (x0_bits + vh_lambda_bits() - 1u) / vh_lambda_bits();
+  ctx->last_bytes = (x0_bits % vh_lambda_bits() == 0u)
                         ? vh_lambda_bytes()
-                        : ((ell + vh_lambda_bits()) % vh_lambda_bits()) / 8u;
-  ctx->total_words = ((size_t)ctx->length_lambda * vh_lambda_bytes()) / 8u;
+                        : (x0_bits % vh_lambda_bits()) / 8u;
+  ctx->total_words = ((size_t)ctx->length_lambda * vh_lambda_bytes() + 7u) / 8u;
 
   ctx->t_pows = malloc(ctx->total_words * sizeof(*ctx->t_pows));
   if (!ctx->t_pows) {
@@ -171,53 +149,21 @@ void vole_hash_precompute_clear(vole_hash_precomp_t* ctx) {
 static inline void compute_h1_4_precomp(const vole_hash_precomp_t* ctx, const uint8_t* x0,
                                         const uint8_t* x1, const uint8_t* x2, const uint8_t* x3,
                                         bf64_t* h1_0, bf64_t* h1_1, bf64_t* h1_2, bf64_t* h1_3) {
-  const unsigned int lambda_bytes = vh_lambda_bytes();
-  const unsigned int length_lambda = ctx->length_lambda;
-
-  uint8_t tmp0[BF512_NUM_BYTES] = {0};
-  uint8_t tmp1[BF512_NUM_BYTES] = {0};
-  uint8_t tmp2[BF512_NUM_BYTES] = {0};
-  uint8_t tmp3[BF512_NUM_BYTES] = {0};
-  memcpy(tmp0, x0 + (size_t)(length_lambda - 1u) * lambda_bytes, ctx->last_bytes);
-  memcpy(tmp1, x1 + (size_t)(length_lambda - 1u) * lambda_bytes, ctx->last_bytes);
-  memcpy(tmp2, x2 + (size_t)(length_lambda - 1u) * lambda_bytes, ctx->last_bytes);
-  memcpy(tmp3, x3 + (size_t)(length_lambda - 1u) * lambda_bytes, ctx->last_bytes);
-
-  bf64_t h0 = bf64_zero();
-  bf64_t h1 = bf64_zero();
-  bf64_t h2 = bf64_zero();
-  bf64_t h3 = bf64_zero();
-  size_t word_idx = 0;
-
-  for (unsigned int off = lambda_bytes; off != 0u; off -= 8u, ++word_idx) {
-    const size_t woff = (size_t)off - 8u;
-    const bf64_t coeff = ctx->t_pows[word_idx];
-    h0 = bf64_add(h0, bf64_mul(coeff, bf64_load(tmp0 + woff)));
-    h1 = bf64_add(h1, bf64_mul(coeff, bf64_load(tmp1 + woff)));
-    h2 = bf64_add(h2, bf64_mul(coeff, bf64_load(tmp2 + woff)));
-    h3 = bf64_add(h3, bf64_mul(coeff, bf64_load(tmp3 + woff)));
-  }
-
-  for (unsigned int blk = 1; blk < length_lambda; ++blk) {
-    const size_t boff = (size_t)(length_lambda - 1u - blk) * lambda_bytes;
-    const uint8_t* b0 = x0 + boff;
-    const uint8_t* b1 = x1 + boff;
-    const uint8_t* b2 = x2 + boff;
-    const uint8_t* b3 = x3 + boff;
-    for (unsigned int off = lambda_bytes; off != 0u; off -= 8u, ++word_idx) {
-      const size_t woff = (size_t)off - 8u;
-      const bf64_t coeff = ctx->t_pows[word_idx];
-      h0 = bf64_add(h0, bf64_mul(coeff, bf64_load(b0 + woff)));
-      h1 = bf64_add(h1, bf64_mul(coeff, bf64_load(b1 + woff)));
-      h2 = bf64_add(h2, bf64_mul(coeff, bf64_load(b2 + woff)));
-      h3 = bf64_add(h3, bf64_mul(coeff, bf64_load(b3 + woff)));
+  /* Evaluate h1 over contiguous padded x0 words in every lane. */
+  const size_t total_words = ctx->total_words;
+  const uint8_t* lanes[4] = {x0, x1, x2, x3};
+  bf64_t accum[4] = {bf64_zero(), bf64_zero(), bf64_zero(), bf64_zero()};
+  for (size_t word = 0; word < total_words; ++word) {
+    const bf64_t coeff = ctx->t_pows[word];
+    for (size_t lane = 0; lane < 4u; ++lane) {
+      const bf64_t v = vh_h1_word(lanes[lane], ctx->x0_bits, total_words, word);
+      accum[lane] = bf64_add(accum[lane], bf64_mul(coeff, v));
     }
   }
-
-  *h1_0 = h0;
-  *h1_1 = h1;
-  *h1_2 = h2;
-  *h1_3 = h3;
+  *h1_0 = accum[0];
+  *h1_1 = accum[1];
+  *h1_2 = accum[2];
+  *h1_3 = accum[3];
 }
 
 static void vole_hash_512_4_precomp(uint8_t* h0_out, uint8_t* h1_out, uint8_t* h2_out,
@@ -228,10 +174,14 @@ static void vole_hash_512_4_precomp(uint8_t* h0_out, uint8_t* h1_out, uint8_t* h
   const uint8_t* r1 = ctx->sd + 1 * BF512_NUM_BYTES;
   const uint8_t* r2 = ctx->sd + 2 * BF512_NUM_BYTES;
   const uint8_t* r3 = ctx->sd + 3 * BF512_NUM_BYTES;
-  const uint8_t* x0_tail = x0 + (ctx->ell + 1 * BF512_NUM_BYTES * 8) / 8;
-  const uint8_t* x1_tail = x1 + (ctx->ell + 1 * BF512_NUM_BYTES * 8) / 8;
-  const uint8_t* x2_tail = x2 + (ctx->ell + 1 * BF512_NUM_BYTES * 8) / 8;
-  const uint8_t* x3_tail = x3 + (ctx->ell + 1 * BF512_NUM_BYTES * 8) / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x0_tail = x0 + ctx->x0_bits / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x1_tail = x1 + ctx->x0_bits / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x2_tail = x2 + ctx->x0_bits / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x3_tail = x3 + ctx->x0_bits / 8;
 
   uint8_t tmp0[BF512_NUM_BYTES] = {0};
   uint8_t tmp1[BF512_NUM_BYTES] = {0};
@@ -315,22 +265,24 @@ void vole_hash_precomp(uint8_t* h0, const vole_hash_precomp_t* ctx, const uint8_
   vole_hash_4_precomp(h0, throw1, throw2, throw3, ctx, x0, x0, x0, x0);
 }
 
-void vole_hash_512(uint8_t* h, const uint8_t* sd, const uint8_t* x, unsigned int ell) {
+void vole_hash_512(uint8_t* h, const uint8_t* sd, const uint8_t* x, unsigned int x0_bits) {
   const uint8_t* r0 = sd;
   const uint8_t* r1 = sd + 1 * BF512_NUM_BYTES;
   const uint8_t* r2 = sd + 2 * BF512_NUM_BYTES;
   const uint8_t* r3 = sd + 3 * BF512_NUM_BYTES;
   const uint8_t* s  = sd + 4 * BF512_NUM_BYTES;
   const uint8_t* t  = sd + 5 * BF512_NUM_BYTES;
-  const uint8_t* x1 = x + (ell + 1 * BF512_NUM_BYTES * 8) / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x1 = x + x0_bits / 8;
 
-  const unsigned int length_lambda = (ell + 3 * BF512_NUM_BYTES * 8 - 1) / (BF512_NUM_BYTES * 8);
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const unsigned int length_lambda = (x0_bits + BF512_NUM_BYTES * 8 - 1) / (BF512_NUM_BYTES * 8);
 
   uint8_t tmp[BF512_NUM_BYTES] = {0};
   memcpy(tmp, x + (length_lambda - 1) * BF512_NUM_BYTES,
-         (ell + BF512_NUM_BYTES * 8) % (BF512_NUM_BYTES * 8) == 0
+         x0_bits % (BF512_NUM_BYTES * 8) == 0
              ? BF512_NUM_BYTES
-             : ((ell + BF512_NUM_BYTES * 8) % (BF512_NUM_BYTES * 8)) / 8);
+             : (x0_bits % (BF512_NUM_BYTES * 8)) / 8);
   bf512_t h0 = bf512_load(tmp);
 
   const bf512_t b_s = bf512_load(s);
@@ -340,7 +292,7 @@ void vole_hash_512(uint8_t* h, const uint8_t* sd, const uint8_t* x, unsigned int
                    bf512_mul(running_s, bf512_load(x + (length_lambda - 1 - i) * BF512_NUM_BYTES)));
   }
 
-  const bf64_t h1 = compute_h1(t, x, ell);
+  const bf64_t h1 = compute_h1(t, x, x0_bits);
   const bf512_t h2 = bf512_add(bf512_mul(bf512_load(r0), h0), bf512_mul_64(bf512_load(r1), h1));
   const bf512_t h3 = bf512_add(bf512_mul(bf512_load(r2), h0), bf512_mul_64(bf512_load(r3), h1));
 
@@ -351,20 +303,23 @@ void vole_hash_512(uint8_t* h, const uint8_t* sd, const uint8_t* x, unsigned int
 }
 
 void vole_hash_512_2(uint8_t* h0_out, uint8_t* h1_out, const uint8_t* sd, const uint8_t* x0,
-                     const uint8_t* x1, unsigned int ell) {
+                     const uint8_t* x1, unsigned int x0_bits) {
   const uint8_t* r0 = sd;
   const uint8_t* r1 = sd + 1 * BF512_NUM_BYTES;
   const uint8_t* r2 = sd + 2 * BF512_NUM_BYTES;
   const uint8_t* r3 = sd + 3 * BF512_NUM_BYTES;
   const uint8_t* s  = sd + 4 * BF512_NUM_BYTES;
   const uint8_t* t  = sd + 5 * BF512_NUM_BYTES;
-  const uint8_t* x0_tail = x0 + (ell + 1 * BF512_NUM_BYTES * 8) / 8;
-  const uint8_t* x1_tail = x1 + (ell + 1 * BF512_NUM_BYTES * 8) / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x0_tail = x0 + x0_bits / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x1_tail = x1 + x0_bits / 8;
 
-  const unsigned int length_lambda = (ell + 3 * BF512_NUM_BYTES * 8 - 1) / (BF512_NUM_BYTES * 8);
-  const size_t last_bytes = (ell + BF512_NUM_BYTES * 8) % (BF512_NUM_BYTES * 8) == 0
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const unsigned int length_lambda = (x0_bits + BF512_NUM_BYTES * 8 - 1) / (BF512_NUM_BYTES * 8);
+  const size_t last_bytes = x0_bits % (BF512_NUM_BYTES * 8) == 0
                                 ? BF512_NUM_BYTES
-                                : ((ell + BF512_NUM_BYTES * 8) % (BF512_NUM_BYTES * 8)) / 8;
+                                : (x0_bits % (BF512_NUM_BYTES * 8)) / 8;
 
   uint8_t tmp0[BF512_NUM_BYTES] = {0};
   uint8_t tmp1[BF512_NUM_BYTES] = {0};
@@ -383,7 +338,7 @@ void vole_hash_512_2(uint8_t* h0_out, uint8_t* h1_out, const uint8_t* sd, const 
 
   bf64_t h1_0;
   bf64_t h1_1;
-  compute_h1_2(t, x0, x1, ell, &h1_0, &h1_1);
+  compute_h1_2(t, x0, x1, x0_bits, &h1_0, &h1_1);
   const bf512_t br0 = bf512_load(r0);
   const bf512_t br1 = bf512_load(r1);
   const bf512_t br2 = bf512_load(r2);
@@ -407,22 +362,27 @@ void vole_hash_512_2(uint8_t* h0_out, uint8_t* h1_out, const uint8_t* sd, const 
 
 void vole_hash_512_4(uint8_t* h0_out, uint8_t* h1_out, uint8_t* h2_out, uint8_t* h3_out,
                      const uint8_t* sd, const uint8_t* x0, const uint8_t* x1,
-                     const uint8_t* x2, const uint8_t* x3, unsigned int ell) {
+                     const uint8_t* x2, const uint8_t* x3, unsigned int x0_bits) {
   const uint8_t* r0 = sd;
   const uint8_t* r1 = sd + 1 * BF512_NUM_BYTES;
   const uint8_t* r2 = sd + 2 * BF512_NUM_BYTES;
   const uint8_t* r3 = sd + 3 * BF512_NUM_BYTES;
   const uint8_t* s  = sd + 4 * BF512_NUM_BYTES;
   const uint8_t* t  = sd + 5 * BF512_NUM_BYTES;
-  const uint8_t* x0_tail = x0 + (ell + 1 * BF512_NUM_BYTES * 8) / 8;
-  const uint8_t* x1_tail = x1 + (ell + 1 * BF512_NUM_BYTES * 8) / 8;
-  const uint8_t* x2_tail = x2 + (ell + 1 * BF512_NUM_BYTES * 8) / 8;
-  const uint8_t* x3_tail = x3 + (ell + 1 * BF512_NUM_BYTES * 8) / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x0_tail = x0 + x0_bits / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x1_tail = x1 + x0_bits / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x2_tail = x2 + x0_bits / 8;
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const uint8_t* x3_tail = x3 + x0_bits / 8;
 
-  const unsigned int length_lambda = (ell + 3 * BF512_NUM_BYTES * 8 - 1) / (BF512_NUM_BYTES * 8);
-  const size_t last_bytes = (ell + BF512_NUM_BYTES * 8) % (BF512_NUM_BYTES * 8) == 0
+  /* Keep the padded prefix and final mask slice disjoint. */
+  const unsigned int length_lambda = (x0_bits + BF512_NUM_BYTES * 8 - 1) / (BF512_NUM_BYTES * 8);
+  const size_t last_bytes = x0_bits % (BF512_NUM_BYTES * 8) == 0
                                 ? BF512_NUM_BYTES
-                                : ((ell + BF512_NUM_BYTES * 8) % (BF512_NUM_BYTES * 8)) / 8;
+                                : (x0_bits % (BF512_NUM_BYTES * 8)) / 8;
 
   uint8_t tmp0[BF512_NUM_BYTES] = {0};
   uint8_t tmp1[BF512_NUM_BYTES] = {0};
@@ -451,7 +411,7 @@ void vole_hash_512_4(uint8_t* h0_out, uint8_t* h1_out, uint8_t* h2_out, uint8_t*
   bf64_t h1_1;
   bf64_t h1_2;
   bf64_t h1_3;
-  compute_h1_4(t, x0, x1, x2, x3, ell, &h1_0, &h1_1, &h1_2, &h1_3);
+  compute_h1_4(t, x0, x1, x2, x3, x0_bits, &h1_0, &h1_1, &h1_2, &h1_3);
   const bf512_t br0 = bf512_load(r0);
   const bf512_t br1 = bf512_load(r1);
   const bf512_t br2 = bf512_load(r2);
@@ -487,22 +447,22 @@ void vole_hash_512_4(uint8_t* h0_out, uint8_t* h1_out, uint8_t* h2_out, uint8_t*
   xor_u8_array(h3_out, x3_tail, h3_out, BF512_NUM_BYTES + UNIVERSAL_HASH_B);
 }
 
-void vole_hash(uint8_t* h, const uint8_t* sd, const uint8_t* x, unsigned int ell, uint32_t lambda) {
+void vole_hash(uint8_t* h, const uint8_t* sd, const uint8_t* x, unsigned int x0_bits, uint32_t lambda) {
   (void)lambda;
-  vole_hash_512(h, sd, x, ell);
+  vole_hash_512(h, sd, x, x0_bits);
 }
 
 void vole_hash_2(uint8_t* h0, uint8_t* h1, const uint8_t* sd, const uint8_t* x0, const uint8_t* x1,
-                 unsigned int ell, uint32_t lambda) {
+                 unsigned int x0_bits, uint32_t lambda) {
   (void)lambda;
-  vole_hash_512_2(h0, h1, sd, x0, x1, ell);
+  vole_hash_512_2(h0, h1, sd, x0, x1, x0_bits);
 }
 
 void vole_hash_4(uint8_t* h0, uint8_t* h1, uint8_t* h2, uint8_t* h3, const uint8_t* sd,
                  const uint8_t* x0, const uint8_t* x1, const uint8_t* x2, const uint8_t* x3,
-                 unsigned int ell, uint32_t lambda) {
+                 unsigned int x0_bits, uint32_t lambda) {
   (void)lambda;
-  vole_hash_512_4(h0, h1, h2, h3, sd, x0, x1, x2, x3, ell);
+  vole_hash_512_4(h0, h1, h2, h3, sd, x0, x1, x2, x3, x0_bits);
 }
 
 void zk_hash_512_init(zk_hash_512_ctx* ctx, const uint8_t* sd) {
@@ -544,60 +504,7 @@ void zk_hash_512_finalize(uint8_t* h, zk_hash_512_ctx* ctx, bf512_t x1) {
                    x1));
 }
 
-void zk_hash_512_2_init(zk_hash_512_2_ctx* ctx, const uint8_t* sd) {
-  const uint8_t* s = sd + 2 * BF512_NUM_BYTES;
-  const uint8_t* t = sd + 3 * BF512_NUM_BYTES;
-
-  ctx->h0[0] = bf512_zero();
-  ctx->h0[1] = bf512_zero();
-  ctx->h1[0] = bf512_zero();
-  ctx->h1[1] = bf512_zero();
-  ctx->s       = bf512_load(s);
-  ctx->s2      = bf512_mul(ctx->s, ctx->s);
-  ctx->t       = bf64_load(t);
-  ctx->sd      = sd;
-  ctx->pending = 0;
-}
-
-void zk_hash_512_2_update(zk_hash_512_2_ctx* ctx, bf512_t v_0, bf512_t v_1) {
-  if (!ctx->pending) {
-    ctx->pending_v_0 = v_0;
-    ctx->pending_v_1 = v_1;
-    ctx->pending     = 1;
-  } else {
-    ctx->h0[0] = bf512_add(
-        bf512_add(bf512_mul(ctx->h0[0], ctx->s2), bf512_mul(ctx->pending_v_0, ctx->s)), v_0);
-    ctx->h1[0] = bf512_add(
-        bf512_mul_64(bf512_add(bf512_mul_64(ctx->h1[0], ctx->t), ctx->pending_v_0), ctx->t), v_0);
-    ctx->h0[1] = bf512_add(
-        bf512_add(bf512_mul(ctx->h0[1], ctx->s2), bf512_mul(ctx->pending_v_1, ctx->s)), v_1);
-    ctx->h1[1] = bf512_add(
-        bf512_mul_64(bf512_add(bf512_mul_64(ctx->h1[1], ctx->t), ctx->pending_v_1), ctx->t), v_1);
-    ctx->pending = 0;
-  }
-}
-
-void zk_hash_512_2_raise_and_update(zk_hash_512_2_ctx* ctx, bf512_t v_1) {
-  zk_hash_512_2_update(ctx, bf512_zero(), v_1);
-}
-
-void zk_hash_512_2_finalize(uint8_t* h_0, uint8_t* h_1, zk_hash_512_2_ctx* ctx, bf512_t x1_0,
-                            bf512_t x1_1) {
-  if (ctx->pending) {
-    ctx->h0[0] = bf512_add(bf512_mul(ctx->h0[0], ctx->s), ctx->pending_v_0);
-    ctx->h1[0] = bf512_add(bf512_mul_64(ctx->h1[0], ctx->t), ctx->pending_v_0);
-    ctx->h0[1] = bf512_add(bf512_mul(ctx->h0[1], ctx->s), ctx->pending_v_1);
-    ctx->h1[1] = bf512_add(bf512_mul_64(ctx->h1[1], ctx->t), ctx->pending_v_1);
-    ctx->pending = 0;
-  }
-  const bf512_t r0 = bf512_load(ctx->sd);
-  const bf512_t r1 = bf512_load(ctx->sd + BF512_NUM_BYTES);
-
-  bf512_store(h_0,
-              bf512_add(bf512_add(bf512_mul(r0, ctx->h0[0]), bf512_mul(r1, ctx->h1[0])), x1_0));
-  bf512_store(h_1,
-              bf512_add(bf512_add(bf512_mul(r0, ctx->h0[1]), bf512_mul(r1, ctx->h1[1])), x1_1));
-}
+/* Vistrutith uses one- and three-coefficient hashes, never two. */
 
 void zk_hash_512_3_init(zk_hash_512_3_ctx* ctx, const uint8_t* sd) {
   const uint8_t* s = sd + 2 * BF512_NUM_BYTES;
@@ -639,9 +546,7 @@ void zk_hash_512_3_update(zk_hash_512_3_ctx* ctx, bf512_t v_0, bf512_t v_1, bf51
   }
 }
 
-void zk_hash_512_3_raise_and_update(zk_hash_512_3_ctx* ctx, bf512_t v_1, bf512_t v_2) {
-  zk_hash_512_3_update(ctx, bf512_zero(), v_1, v_2);
-}
+/* Removed unused internal zk_hash_512_3_raise_and_update helper. */
 
 void zk_hash_512_3_finalize(uint8_t* h_0, uint8_t* h_1, uint8_t* h_2, zk_hash_512_3_ctx* ctx,
                             bf512_t x1_0, bf512_t x1_1, bf512_t x1_2) {

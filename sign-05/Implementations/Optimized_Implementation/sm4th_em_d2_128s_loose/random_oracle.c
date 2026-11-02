@@ -83,22 +83,24 @@ void new_hash_update(new_hash_context_t* ctx, const uint8_t* input, size_t input
   if (input_bytes_len == 0) {
     return;
   }
-  if (!input || ctx->buffer_len > SIZE_MAX - input_bytes_len - 1) {
-    return;
+  /* This void API must stop rather than hash a truncated transcript. */
+  if (!input || ctx->buffer_len == SIZE_MAX ||
+      input_bytes_len > SIZE_MAX - ctx->buffer_len - 1u) {
+    abort();
   }
-  const size_t needed = ctx->buffer_len + input_bytes_len + 1;
+  const size_t needed = ctx->buffer_len + input_bytes_len + 1u;
   if (needed > ctx->buffer_cap) {
     size_t new_cap = ctx->buffer_cap ? ctx->buffer_cap : 64;
     while (new_cap < needed) {
-      if (new_cap > SIZE_MAX / 2) {
+      if (new_cap > SIZE_MAX / 2u) {
         new_cap = needed;
         break;
       }
-      new_cap *= 2;
+      new_cap *= 2u;
     }
     uint8_t* new_buf = realloc(ctx->buffer, new_cap);
     if (!new_buf) {
-      return;
+      abort();
     }
     ctx->buffer = new_buf;
     ctx->buffer_cap = new_cap;
@@ -113,9 +115,9 @@ void new_hash_update(new_hash_context_t* ctx, const uint8_t* input, size_t input
 void new_hash_final(new_hash_context_t* ctx, uint8_t domain_sep, size_t output_bytes_len) {
   if (ctx->output_bytes_len < output_bytes_len || ctx->output == NULL) {
     uint8_t* new_out = realloc(ctx->output, output_bytes_len);
+    /* Allocation failure cannot be represented as a valid digest. */
     if (!new_out) {
-      ctx->finalized = 0;
-      return;
+      abort();
     }
     ctx->output = new_out;
   }
@@ -123,8 +125,8 @@ void new_hash_final(new_hash_context_t* ctx, uint8_t domain_sep, size_t output_b
 
   const uint8_t* msg = ctx->buffer_len ? ctx->buffer : (const uint8_t*)"";
   if (!hash_with_domain_sep(msg, ctx->buffer_len, domain_sep, ctx->output, output_bytes_len)) {
-    ctx->finalized = 0;
-    return;
+    /* A failed backend must never supply a digest to the protocol. */
+    abort();
   }
   ctx->output_off = 0;
   ctx->finalized = 1;
@@ -132,20 +134,18 @@ void new_hash_final(new_hash_context_t* ctx, uint8_t domain_sep, size_t output_b
 
 // squeeze outputs with claimed length into dst, used when splited result is needed
 void new_hash_squeeze(new_hash_context_t* ctx, uint8_t* dst, size_t len) {
-  if (!dst || !len) {
+  if (!len) {
     return;
   }
   const size_t remaining = ctx->output_bytes_len > ctx->output_off
                                ? ctx->output_bytes_len - ctx->output_off
                                : 0;
-  const size_t take = len > remaining ? remaining : len;
-  if (take) {
-    memcpy(dst, ctx->output + ctx->output_off, take);
+  /* Reject absent or undersized digests instead of padding with zeros. */
+  if (!dst || !ctx->finalized || !ctx->output || len > remaining) {
+    abort();
   }
-  ctx->output_off += take;
-  if (len > take) {
-    memset(dst + take, 0, len - take);
-  }
+  memcpy(dst, ctx->output + ctx->output_off, len);
+  ctx->output_off += len;
 }
 
 void new_hash_clear(new_hash_context_t* ctx) {
@@ -253,9 +253,9 @@ void H2_3_final_u32_le(const params_t* params, const H2_context_t* ctx, uint32_t
   const size_t msg_len = base_len + 4u;
   uint8_t stack_buf[1024];
   uint8_t* msg = msg_len <= sizeof(stack_buf) ? stack_buf : malloc(msg_len);
+  /* Never substitute an all-zero challenge on allocation failure. */
   if (!msg) {
-    memset(digest, 0, out_bytes_len);
-    return;
+    abort();
   }
   if (base_len) {
     memcpy(msg, ctx->buffer, base_len);
@@ -265,7 +265,7 @@ void H2_3_final_u32_le(const params_t* params, const H2_context_t* ctx, uint32_t
   msg[base_len + 2] = (uint8_t)(ctr >> 16);
   msg[base_len + 3] = (uint8_t)(ctr >> 24);
   if (!hash_with_domain_sep(msg, msg_len, domain_sep_H2_3, digest, out_bytes_len)) {
-    memset(digest, 0, out_bytes_len);
+    abort();
   }
   if (msg != stack_buf) {
     free(msg);

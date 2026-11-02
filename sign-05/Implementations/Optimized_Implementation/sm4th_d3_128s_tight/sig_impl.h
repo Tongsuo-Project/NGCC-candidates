@@ -1,6 +1,6 @@
 /*
  * The main sign and verify functions for sm4th_d3_128s_tight signature scheme
- * Accelerated by xor_u_tilde_masked_batch4 and chall3_batch4_sm3_hash
+ * Uses the existing four-lane masking and challenge helpers
  */
 
 #ifndef SIG_IMPL_H
@@ -11,7 +11,8 @@
 
 #include "params.h"
 
-void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msglen,
+/* Return failure when the final-challenge counter is exhausted. */
+int sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msglen,
                 const uint8_t* owf_key, const uint8_t* owf_input, const uint8_t* owf_output,
                 const uint8_t* witness, const uint8_t* rho, size_t rholen);
 

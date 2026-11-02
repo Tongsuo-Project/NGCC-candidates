@@ -1,3 +1,4 @@
+/* Remove unused internal helpers; public scheme and test entrypoints are retained. */
 #ifndef SM4_H
 #define SM4_H
 
@@ -109,10 +110,7 @@ static inline uint32_t SM4_L_inv(uint32_t C)
 }
 
 /* SM4 inverse of linear transformation L for 4 input/output bytes */
-static inline void SM4_L_inv_bytes(const uint8_t in[4], uint8_t out[4])
-{
-    sm4_store_be_u32(SM4_L_inv(sm4_load_be_u32(in)), out);
-}
+
 
 /* SM4 linear transformation L_prime used in encryption rounds */
 static inline uint32_t SM4_L_prime(uint32_t B)
@@ -130,10 +128,7 @@ static inline uint32_t SM4_L_prime_inv(uint32_t C)
 }
 
 /* SM4 inverse of linear transformation L_prime for 4 input/output bytes */
-static inline void SM4_L_prime_inv_bytes(const uint8_t in[4], uint8_t out[4])
-{
-    sm4_store_be_u32(SM4_L_prime_inv(sm4_load_be_u32(in)), out);
-}
+
 
 /* ================================================================== *
  *  SM4 Affine Transformation Functions and Constants                 *

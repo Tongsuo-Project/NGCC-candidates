@@ -1,8 +1,10 @@
 CC ?= gcc
 
 # Reference implementation: portable C only, no instruction-set acceleration sources or flags.
-CFLAGS = -O2 -std=c11 -pedantic -Wall -Wextra -I. -I./utils_ballet -I./utils_sm4 -include fallbacks.h -DSM4_SBOX_TABLE
+CFLAGS = -O2 -std=c11 -pedantic -Wall -Wextra -I. -I./utils_ballet -I./utils_sm4 -include fallbacks.h
 CFLAGS += -DUSE_BALLET=1 -DHAVE_BALLET_CORE=1
+# Opt in to legacy lookup tables with REF_USE_LOOKUP_TABLES=1.
+REF_USE_LOOKUP_TABLES ?= 0
 LDFLAGS = -lm
 
 NDEBUG ?= 1
@@ -14,15 +16,20 @@ ifeq ($(NDEBUG),1)
 CFLAGS += -DNDEBUG -O3 $(LTO_FLAG)
 endif
 
+# Append lookup mode last so release/debug CFLAGS remain effective.
+override CFLAGS += -DREF_USE_LOOKUP_TABLES=$(REF_USE_LOOKUP_TABLES)
+
 SOURCES = auxfunc.c bavc.c compat.c drng.c fields.c owf.c params.c prg.c random_oracle.c sig_impl.c sm4_witness.c sm4th_em_d2_128s_tight.c sm4th_em_d2_128s_tight_AlgorithmInstance.c sm4th_sm4_128.c universal_hashing.c utils.c utils_ballet/Ballet256256_coreE.c utils_sm4/sm4_affine.c utils_sm4/sm4_core.c utils_sm4/sm4_ecb.c utils_sm4/sm4_sbox.c vole.c 
 OBJECTS = $(SOURCES:.c=.o)
 
 all: sm4th_em_d2_128s_tight_bench
 
-KAT_SIG: KAT_SIG.c $(SOURCES)
+# The fixed domain is private to sig_impl.c in SOURCES.
+# Track the existing initialization and build-option headers.
+KAT_SIG: KAT_SIG.c $(SOURCES) compat.h macros.h
 	$(CC) $(CFLAGS) -o $@ KAT_SIG.c $(SOURCES) $(LDFLAGS)
 
-sm4th_em_d2_128s_tight_bench: sm4th_em_d2_128s_tight_bench.c $(SOURCES)
+sm4th_em_d2_128s_tight_bench: sm4th_em_d2_128s_tight_bench.c $(SOURCES) compat.h macros.h
 	$(CC) $(CFLAGS) -o $@ sm4th_em_d2_128s_tight_bench.c $(SOURCES) $(LDFLAGS)
 
 clean:

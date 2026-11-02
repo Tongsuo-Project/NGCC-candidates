@@ -1,3 +1,4 @@
+/* Keep the active non-fused PRG batches; omit the unused 4-lambda wrapper. */
 /*
  * SPDX-License-Identifier: MIT
  *
@@ -149,8 +150,3 @@ void prg_fixed_tweak_independent_batch(const uint8_t* keys, size_t key_stride, c
   }
 }
 
-void prg_4_lambda(const uint8_t* key, const uint8_t* iv, uint32_t tweak, uint8_t* out,
-                  unsigned int seclvl) {
-  const size_t outlen = 4u * (size_t)(seclvl / 8u);
-  prg(key, iv, tweak, out, seclvl, outlen);
-}

@@ -2,9 +2,7 @@
 
 #include <string.h>
 
-uint32_t rotl32_u(uint32_t x, uint8_t n) {
-  return (x << n) | (x >> (32 - n));
-}
+/* Removed unused internal rotl32_u helper. */
 
 bool decode_all_chall_3(const params_t* params, uint16_t* decoded_chall, const uint8_t* chall) {
   const unsigned int tau = params->tau;

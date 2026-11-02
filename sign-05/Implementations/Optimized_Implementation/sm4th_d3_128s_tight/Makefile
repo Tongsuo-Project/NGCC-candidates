@@ -8,33 +8,39 @@ CFLAGS = -O3 -std=c11 -pedantic -Wall -Wextra \
 LDFLAGS = -lm
 .DEFAULT_GOAL := all
 
+TARGET_TRIPLE := $(shell $(CC) -dumpmachine)
+TARGET_ARCH := $(firstword $(subst -, ,$(TARGET_TRIPLE)))
+X86_64_LINUX := $(if $(filter x86_64,$(TARGET_ARCH)),$(findstring linux,$(TARGET_TRIPLE)))
+
 NDEBUG ?= 1
 LTO_FLAG := -flto
 ifeq (,$(findstring clang,$(shell $(CC) --version 2>/dev/null)))
 LTO_FLAG := -flto=auto
 endif
 ifeq ($(NDEBUG),1)
-CFLAGS += -DNDEBUG -march=native $(LTO_FLAG)
+# Keep the binary baseline-safe; ISA kernels use local targets.
+CFLAGS += -DNDEBUG $(LTO_FLAG)
 endif
 
-# PCLMUL: GF(2^128) carryless multiply acceleration.
-# Default on for x86/x86_64, off otherwise.
-ifneq (,$(filter x86_64 i386,$(shell uname -m)))
+# Compile optional carryless-multiply kernels, select at runtime.
+# Default on for x86-64, off otherwise.
+ifneq (,$(filter x86_64,$(TARGET_ARCH)))
 FIELD_PCLMUL ?= 1
 else
 FIELD_PCLMUL ?= 0
 endif
 ifeq ($(FIELD_PCLMUL),1)
-CFLAGS += -mpclmul -DSM4TH_FIELD_PCLMUL
+CFLAGS += -DSM4TH_FIELD_PCLMUL
 endif
 
-# S-box table: precomputed lookup. This is a portable C optimization, not
-# instruction-set acceleration, so keep it enabled by default.
-ifneq (,$(filter x86_64 i386,$(shell uname -m)))
-USE_SBOX_TABLE ?= 1
+# Portable secret-indexed lookup tables require explicit opt-in.
+# Honor an explicitly selected legacy switch unless the new switch is set.
+ifneq ($(origin USE_SBOX_TABLE),undefined)
+REF_USE_LOOKUP_TABLES ?= $(USE_SBOX_TABLE)
 else
-USE_SBOX_TABLE ?= 1
+REF_USE_LOOKUP_TABLES ?= 0
 endif
+USE_SBOX_TABLE ?= $(REF_USE_LOOKUP_TABLES)
 ifeq ($(USE_SBOX_TABLE),1)
 CFLAGS += -DSBOX_TABLE -DSM4_SBOX_TABLE
 endif
@@ -51,31 +57,34 @@ endif
 
 # Ballet PRG AVX2 acceleration. SM4 is used only for the OWF in this tight
 # variant, so PRG_ACCE must not pull in SM4 PRG backends.
-ifneq (,$(filter x86_64 i386,$(shell uname -m)))
+ifneq (,$(filter x86_64 i386 i486 i586 i686,$(TARGET_ARCH)))
 PRG_ACCE ?= 1
 else
 PRG_ACCE ?= 0
 endif
 CFLAGS += -DPRG_ACCE=$(PRG_ACCE)
 CFLAGS += -DUSE_BALLET=1 -DHAVE_BALLET_CORE=1
-ifneq (,$(filter x86_64 i386,$(shell uname -m)))
-ifeq ($(PRG_ACCE),1)
-CFLAGS += -mavx2
-endif
-endif
 
 # SM4NI acceleration for the single SM4 OWF. Keep this separate from PRG_ACCE:
 # tight uses Ballet as PRG and must not pull in SM4 PRG-specific backends.
-ifneq (,$(filter x86_64 i386,$(shell uname -m)))
+ifneq (,$(filter x86_64 i386 i486 i586 i686,$(TARGET_ARCH)))
 SM4_OWF_ACCE ?= 1
 else
 SM4_OWF_ACCE ?= 0
 endif
 CFLAGS += -DSM4TH_ENABLE_SM4_ACCE=$(SM4_OWF_ACCE)
 
+# Native SM4 is independent of AES-NI and Ballet switches.
+ifneq (,$(filter x86_64,$(TARGET_ARCH)))
+INTEL_SM4_ACCE ?= 1
+else
+INTEL_SM4_ACCE ?= 0
+endif
+CFLAGS += -DSM4TH_ENABLE_INTEL_SM4=$(INTEL_SM4_ACCE)
+
 X86_ASM_SOURCE =
 X86_ASM_OBJECT =
-ifneq (,$(filter x86_64 i386,$(shell uname -m)))
+ifneq ($(X86_64_LINUX),)
 ifeq ($(SM4_OWF_ACCE),1)
 X86_ASM_SOURCE = utils_sm4/sm4_asm.S
 X86_ASM_OBJECT = sm4_asm.o
@@ -123,3 +132,6 @@ clean:
 	rm -rf output
 
 .PHONY: all clean KAT_SIG sm4th_d3_128s_tight_bench
+
+# Append after all NDEBUG/ISA flags so override does not suppress them.
+override CFLAGS += -DREF_USE_LOOKUP_TABLES=$(REF_USE_LOOKUP_TABLES)

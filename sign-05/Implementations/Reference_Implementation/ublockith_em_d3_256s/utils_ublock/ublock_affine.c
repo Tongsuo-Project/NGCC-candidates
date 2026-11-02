@@ -1,3 +1,4 @@
+/* Verifier callers already provide delta powers; omit unused wrappers. */
 /*
  * uBlock SubDWord affine transformation helpers for the VOLE algebraic path.
  *
@@ -327,13 +328,6 @@ void ublock_invsubword_nibble_key_pows(bf256_t *z_key, const bf256_t *y_key,
     z_key[3] = z3;
 }
 
-void ublock_invsubword_nibble_key(bf256_t *z_key, const bf256_t *y_key, const bf256_t delta)
-{
-    const bf256_t delta2 = bf256_mul(delta, delta);
-    const bf256_t delta3 = bf256_mul(delta2, delta);
-    ublock_invsubword_nibble_key_pows(z_key, y_key, delta, delta2, delta3);
-}
-
 /*  An example:
  *   q1 = w1 Delta + v1, q2 = w2 Delta + v2, q3 = w3 Delta + v3
  *   then we have 
@@ -394,9 +388,3 @@ void ublock_subword_nibble_key_pows(bf256_t *y_key, const bf256_t *x_key,
     y_key[3] = y3;
 }
 
-void ublock_subword_nibble_key(bf256_t *y_key, const bf256_t *x_key, const bf256_t delta)
-{
-    const bf256_t delta2 = bf256_mul(delta, delta);
-    const bf256_t delta3 = bf256_mul(delta2, delta);
-    ublock_subword_nibble_key_pows(y_key, x_key, delta, delta2, delta3);
-}

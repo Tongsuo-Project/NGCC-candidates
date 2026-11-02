@@ -71,12 +71,14 @@ static inline void xor_u_tilde_masked_batch4(uint8_t* batch, size_t stride,
 #endif
 }
 
-void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msg_len,
+int ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msg_len,
                     const uint8_t* owf_key, const uint8_t* owf_input, const uint8_t* owf_output,
                     const uint8_t* witness, const uint8_t* rho, size_t rholen) {
   const char* proto_name = "ublockith";
   SIG_TSTART(t_sign_total);
   const unsigned int ell = params->ell;
+  /* Hash the prefix before the final field-and-B-bit mask. */
+  const unsigned int vh_x0_bits = params->ell_hat_bits - params->lambda - 8u * UNIVERSAL_HASH_B;
   const unsigned int ell_bytes = params->ell_bytes;
   const unsigned int lambda = params->lambda;
   const unsigned int tau = params->tau;
@@ -122,7 +124,7 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
   SIG_TEND("sign.hash_challenge_1.pseudoXOF_5lambda+64", t_chall_1);
 
   SIG_TSTART(t_u_tilde);
-  vole_hash(signature_u_tilde(params, sig), chall_1, u, ell, lambda);
+  vole_hash(signature_u_tilde(params, sig), chall_1, u, vh_x0_bits, lambda);
   SIG_TEND("sign.vole_hash_u_tilde", t_u_tilde);
 
   H2_context_t chall_2_ctx;
@@ -137,7 +139,7 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
 #endif
   vole_hash_precomp_t vh_precomp_sign;
   const int has_vh_precomp_sign =
-      vole_hash_precompute_init(&vh_precomp_sign, chall_1, ell, lambda);
+      vole_hash_precompute_init(&vh_precomp_sign, chall_1, vh_x0_bits, lambda);
 
   {
     uint8_t V_tilde_batch[4u * (BF256_NUM_BYTES + UNIVERSAL_HASH_B)];
@@ -155,7 +157,7 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
                             V[i + 1], V[i + 2], V[i + 3]);
       } else {
         vole_hash_4(V_tilde0, V_tilde1, V_tilde2, V_tilde3, chall_1, V[i], V[i + 1], V[i + 2],
-                    V[i + 3], ell, lambda);
+                    V[i + 3], vh_x0_bits, lambda);
       }
 #ifdef SIG_TIMING
       t_vole_hash_ns += sig_now_ns() - t_stage;
@@ -173,7 +175,7 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
       if (has_vh_precomp_sign) {
         vole_hash_2_precomp(V_tilde0, V_tilde1, &vh_precomp_sign, V[i], V[i + 1]);
       } else {
-        vole_hash_2(V_tilde0, V_tilde1, chall_1, V[i], V[i + 1], ell, lambda);
+        vole_hash_2(V_tilde0, V_tilde1, chall_1, V[i], V[i + 1], vh_x0_bits, lambda);
       }
 #ifdef SIG_TIMING
       t_vole_hash_ns += sig_now_ns() - t_stage;
@@ -192,7 +194,7 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
       if (has_vh_precomp_sign) {
         vole_hash_precomp(V_tilde0, &vh_precomp_sign, V[i]);
       } else {
-        vole_hash(V_tilde0, chall_1, V[i], ell, lambda);
+        vole_hash(V_tilde0, chall_1, V[i], vh_x0_bits, lambda);
       }
 #ifdef SIG_TIMING
       t_vole_hash_ns += sig_now_ns() - t_stage;
@@ -233,7 +235,8 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
 
   H2_context_t chall_3_ctx;
   SIG_TSTART(t_chall_3);
-  hash_challenge_3_init(&chall_3_ctx, chall_2, signature_a1_tilde(params, sig), lambda,
+  /* Include the prover a0 before the serialized a1..a(d-1). */
+  hash_challenge_3_init(&chall_3_ctx, chall_2, a0_tilde, signature_a1_tilde(params, sig), lambda,
                         params->deg);
 
   uint8_t chall_3_batch[4][params->lambda_bytes];
@@ -248,6 +251,7 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
 #endif
 
   uint32_t ctr = 0;
+  bool signing_ok = false;
   for (;;) {
 #ifdef SIG_TIMING
     t_chall3_stage = sig_now_ns();
@@ -270,6 +274,7 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
       if (bavc_open(params, signature_decom_i(params, sig), &bavc, decoded_chall_3)) {
         memcpy(signature_chall_3(params, sig), chall_3, params->lambda_bytes);
         ctr += (uint32_t)lane;
+        signing_ok = true;
         done = true;
         break;
       }
@@ -284,7 +289,10 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
 #ifdef SIG_TIMING
     t_chall3_open_ns += sig_now_ns() - t_chall3_stage;
 #endif
-    ctr += 4u;
+    /* Failed grinding and opening trials share one bounded counter. */
+    if (!signature_next_ctr_batch(&ctr)) {
+      break;
+    }
   }
   free(decoded_chall_3);
   SIG_TEND("sign.challenge_3_loop.pseudoXOF_lambda", t_chall_3);
@@ -306,6 +314,10 @@ void ublockith_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, si
 
   SIG_PRINT("[%s sign] end\n", proto_name);
   SIG_TEND("sign.total", t_sign_total);
+  if (!signing_ok) {
+    memset(sig, 0, params->sig_size);
+  }
+  return signing_ok ? 0 : -1;
 }
 
 int ublockith_verify(const params_t* params, const uint8_t* msg, size_t msglen,
@@ -313,6 +325,8 @@ int ublockith_verify(const params_t* params, const uint8_t* msg, size_t msglen,
   const char* proto_name = "ublockith";
   SIG_TSTART(t_verify_total);
   const unsigned int ell = params->ell;
+  /* Hash the prefix before the final field-and-B-bit mask. */
+  const unsigned int vh_x0_bits = params->ell_hat_bits - params->lambda - 8u * UNIVERSAL_HASH_B;
   const unsigned int lambda = params->lambda;
   const unsigned int lambda_bytes = params->lambda_bytes;
   const unsigned int tau = params->tau;
@@ -379,7 +393,7 @@ int ublockith_verify(const params_t* params, const uint8_t* msg, size_t msglen,
   t_pseudoXOF_ns += sig_now_ns() - t_stage;
 #endif
   vole_hash_precomp_t vh_precomp;
-  const int has_vh_precomp = vole_hash_precompute_init(&vh_precomp, chall_1, ell, lambda);
+  const int has_vh_precomp = vole_hash_precompute_init(&vh_precomp, chall_1, vh_x0_bits, lambda);
 
   {
     const uint8_t* chall_3 = dsignature_chall_3(params, sig);
@@ -399,7 +413,7 @@ int ublockith_verify(const params_t* params, const uint8_t* msg, size_t msglen,
                             q[i + 2], q[i + 3]);
       } else {
         vole_hash_4(Q_tilde0, Q_tilde1, Q_tilde2, Q_tilde3, chall_1, q[i], q[i + 1], q[i + 2],
-                    q[i + 3], ell, lambda);
+                    q[i + 3], vh_x0_bits, lambda);
       }
 #ifdef SIG_TIMING
       t_vole_hash_ns += sig_now_ns() - t_stage;
@@ -419,7 +433,7 @@ int ublockith_verify(const params_t* params, const uint8_t* msg, size_t msglen,
       if (has_vh_precomp) {
         vole_hash_2_precomp(Q_tilde0, Q_tilde1, &vh_precomp, q[i], q[i + 1]);
       } else {
-        vole_hash_2(Q_tilde0, Q_tilde1, chall_1, q[i], q[i + 1], ell, lambda);
+        vole_hash_2(Q_tilde0, Q_tilde1, chall_1, q[i], q[i + 1], vh_x0_bits, lambda);
       }
 #ifdef SIG_TIMING
       t_vole_hash_ns += sig_now_ns() - t_stage;
@@ -440,7 +454,7 @@ int ublockith_verify(const params_t* params, const uint8_t* msg, size_t msglen,
       if (has_vh_precomp) {
         vole_hash_precomp(Q_tilde0, &vh_precomp, q[i]);
       } else {
-        vole_hash(Q_tilde0, chall_1, q[i], ell, lambda);
+        vole_hash(Q_tilde0, chall_1, q[i], vh_x0_bits, lambda);
       }
 #ifdef SIG_TIMING
       t_vole_hash_ns += sig_now_ns() - t_stage;
@@ -479,7 +493,8 @@ int ublockith_verify(const params_t* params, const uint8_t* msg, size_t msglen,
   uint8_t* chall_3 = malloc(params->lambda_bytes);
   assert(chall_3);
   SIG_TSTART(t_hash_chall3);
-  hash_challenge_3(params, chall_3, chall_2, dsignature_a1_tilde(params, sig),
+  /* Include the independently reconstructed verifier a0. */
+  hash_challenge_3(params, chall_3, chall_2, a0_tilde, dsignature_a1_tilde(params, sig),
                    dsignature_ctr(params, sig), lambda);
   SIG_TEND("verify.hash_challenge_3.pseudoXOF_lambda", t_hash_chall3);
 

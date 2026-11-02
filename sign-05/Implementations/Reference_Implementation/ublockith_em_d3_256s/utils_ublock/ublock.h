@@ -1,3 +1,4 @@
+/* Retain the cipher API and the affine interfaces used by the proof. */
 /*
  * uBlock-256/256 block cipher — portable C implementation
  *
@@ -12,6 +13,7 @@
 #define UBLOCK_H
 
 #include <stdint.h>
+#include "../macros.h"
 #include <stdlib.h>
 #include "params.h"
 
@@ -57,7 +59,6 @@ int  ublock256_ecb_encrypt(const ublock256_key_t *ks,
 uint8_t ublock_subword_nibble(uint8_t x);
 void    ublock_subword_nibble_tag(bf256_t *y_tag_deg0, bf256_t *y_tag_deg1, bf256_t *y_tag_deg2,
                                   const bf256_t *x_tag, uint8_t x);
-void    ublock_subword_nibble_key(bf256_t *y_key, const bf256_t *x_key, bf256_t delta);
 void    ublock_subword_nibble_key_pows(bf256_t *y_key, const bf256_t *x_key,
                                        bf256_t delta, bf256_t delta2, bf256_t delta3);
 
@@ -68,7 +69,6 @@ void    ublock_T_nibble_key(bf256_t *z_key, const bf256_t *y_key, bf256_t delta)
 uint8_t ublock_invsubword_nibble(uint8_t y);
 void    ublock_invsubword_nibble_tag(bf256_t *z_tag_deg0, bf256_t *z_tag_deg1, bf256_t *z_tag_deg2,
                                      const bf256_t *y_tag, uint8_t y);
-void    ublock_invsubword_nibble_key(bf256_t *z_key, const bf256_t *y_key, bf256_t delta);
 void    ublock_invsubword_nibble_key_pows(bf256_t *z_key, const bf256_t *y_key,
                                           bf256_t delta, bf256_t delta2, bf256_t delta3);
 #endif
@@ -91,6 +91,7 @@ static const uint8_t UBLOCK_INV_SBOX_NIBBLE[16] = {
 };
 
 /* 8-bit combined S-box: SBOX_BYTE[v] = (SBOX[v>>4]<<4) | SBOX[v&0xf] */
+#if REF_USE_LOOKUP_TABLES
 static const uint8_t UBLOCK_SBOX_BYTE[256] = {
     0x77, 0x74, 0x79, 0x7c, 0x7b, 0x7a, 0x7d, 0x78,
     0x7f, 0x7e, 0x71, 0x76, 0x70, 0x73, 0x72, 0x75,
@@ -126,10 +127,29 @@ static const uint8_t UBLOCK_SBOX_BYTE[256] = {
     0x5f, 0x5e, 0x51, 0x56, 0x50, 0x53, 0x52, 0x55,
 };
 
+#endif
+
+/* Evaluate the nibble S-box ANF in parallel in both nibbles.
+ * Only fixed shifts and Boolean operations depend on the input value. */
+static inline uint8_t ublock_sub_byte(uint8_t x) {
+#if REF_USE_LOOKUP_TABLES
+    return UBLOCK_SBOX_BYTE[x];
+#else
+    const uint8_t x0 = x & 0x11u, x1 = (x >> 1) & 0x11u;
+    const uint8_t x2 = (x >> 2) & 0x11u, x3 = (x >> 3) & 0x11u;
+    const uint8_t y3 = x1 ^ x2 ^ x3 ^ (x1 & x2);
+    const uint8_t y2 = 0x11u ^ x1 ^ (x0 & x1) ^ x2 ^ (x1 & x2 & x3);
+    const uint8_t y1 = 0x11u ^ x0 ^ x1 ^ (x0 & x1) ^ (x0 & x2) ^
+                        (x0 & x1 & x2) ^ (x0 & x3) ^ (x2 & x3);
+    const uint8_t y0 = 0x11u ^ x0 ^ (x2 & x3);
+    return (uint8_t)(y0 | (y1 << 1) | (y2 << 2) | (y3 << 3));
+#endif
+}
+
 static inline void ublock_apply_sn(uint8_t *data, size_t nbytes)
 {
     for (size_t i = 0; i < nbytes; i++)
-        data[i] = UBLOCK_SBOX_BYTE[data[i]];
+        data[i] = ublock_sub_byte(data[i]);
 }
 
 /* pk: nibble permutation on K0||K1 (32 nibbles = 16 bytes). */

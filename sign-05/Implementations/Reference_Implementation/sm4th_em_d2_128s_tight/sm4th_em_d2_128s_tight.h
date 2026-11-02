@@ -38,7 +38,10 @@ typedef struct {
   uint8_t* witness;
 } sm4th_em_d2_128s_tight_unpacked_private_key_t;
 
-/* Signature main API */
+/* Signature main API.
+ * Both randomness-explicit signing entry points require a non-NULL rho of
+ * exactly SIGN_RANDOMNESS_BYTES (384 bits).
+ */
 
 int sm4th_em_d2_128s_tight_keygen(uint8_t* pk, uint8_t* sk, const uint8_t* sk_key, const uint8_t* sk_input);
 int sm4th_em_d2_128s_tight_sign_with_randomness(const uint8_t* sk, const uint8_t* message, size_t message_len, const uint8_t* rho, size_t rho_len, uint8_t* signature, size_t* signature_len);

@@ -4,6 +4,32 @@
 #include "macros.h"
 #include <stddef.h>
 
+/* Internal C11 initialization support; not part of the public C++ interface. */
+#ifndef __cplusplus
+#include <stdatomic.h>
+
+/* Publish immutable tables/parameters once, including concurrent first use. */
+typedef atomic_uint ref_once_t;
+#define REF_ONCE_INIT ATOMIC_VAR_INIT(0u)
+
+static inline void ref_call_once(ref_once_t* state, void (*initialize)(void)) {
+  if (atomic_load_explicit(state, memory_order_acquire) == 2u) {
+    return;
+  }
+  unsigned int expected = 0u;
+  if (atomic_compare_exchange_strong_explicit(state, &expected, 1u,
+                                             memory_order_acq_rel, memory_order_acquire)) {
+    initialize();
+    atomic_store_explicit(state, 2u, memory_order_release);
+  } else {
+    while (atomic_load_explicit(state, memory_order_acquire) != 2u) {
+      /* The initializer does not allocate or call back into this once object. */
+    }
+  }
+}
+#endif
+
+
 /**
  * Some aligned_alloc compatbility implementations require custom free
  * functions, so we provide one too.

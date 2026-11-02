@@ -4,6 +4,7 @@
  * Pseudorandom generator (PRG) selection and wrappers.
  */
 #include "prg.h"
+#include "compat.h"
 
 #include "utils_sm4/sm4.h"
 #include "x86_caps.h"
@@ -43,9 +44,18 @@
 #define PRG_HAS_HYGON_CIS_FASTPATH 0
 #endif
 
+#define PRG_HAS_INTEL_SM4_NI SM4TH_NATIVE_SM4_COMPILED
+
 #if PRG_HAS_SM4_FASTPATH
+/* The optional assembly uses the Linux x86-64 ABI only. */
+#if defined(__linux__) && defined(__x86_64__)
 extern void sm4_aesni_avx2_asm_ecb_enc_blk_16(unsigned int* rk, unsigned char* dst,
-                                              unsigned char* src) __attribute__((weak));
+                                          unsigned char* src) __attribute__((weak));
+#else
+static void (*const sm4_aesni_avx2_asm_ecb_enc_blk_16)(unsigned int*, unsigned char*,
+                                                     unsigned char*) = NULL;
+#endif
+
 
 void sm4_encrypt4_opt(const uint32_t *rk, const void *src, const void *dst);
 
@@ -66,21 +76,31 @@ static void add_to_upper_word(uint8_t* iv, uint32_t tweak) {
   memcpy(iv + PRG_BLOCK_SIZE - sizeof(uint32_t), &iv3, sizeof(uint32_t));
 }
 
-static inline int prg_has_sm4_fastpath_runtime(void) {
-#if PRG_HAS_SM4_FASTPATH
-  return sm4th_x86_has_aes_ssse3() && sm4th_x86_has_avx2();
-#else
-  return 0;
-#endif
+/* Compile optional detectors only when their callers are compiled. */
+#if PRG_HAS_INTEL_SM4_NI
+/* Native support is published by the shared once-only detector. */
+static inline int prg_has_intel_sm4_ni_runtime_cached(void) {
+  return intel_sm4_ni_supported();
 }
+#endif
+
+#if PRG_HAS_SM4_FASTPATH
+static inline int prg_has_sm4_fastpath_runtime(void) {
+  /* SM4NI needs AES+SSSE3; only the 16-block assembly needs AVX2. */
+  return sm4th_x86_has_aes_ssse3();
+}
+#endif
 
 static inline int prg_has_sm4_fastpath_runtime_cached(void) {
 #if PRG_HAS_SM4_FASTPATH
-  static int cached = -1;
-  if (cached < 0) {
-    cached = prg_has_sm4_fastpath_runtime() ? 1 : 0;
+  /* Publish feature-cache values atomically across callers. */
+  static atomic_int cached = ATOMIC_VAR_INIT(-1);
+  int value = atomic_load_explicit(&cached, memory_order_acquire);
+  if (value < 0) {
+    value = prg_has_sm4_fastpath_runtime() ? 1 : 0;
+    atomic_store_explicit(&cached, value, memory_order_release);
   }
-  return cached;
+  return value;
 #else
   return 0;
 #endif
@@ -88,11 +108,14 @@ static inline int prg_has_sm4_fastpath_runtime_cached(void) {
 
 #if PRG_HAS_HYGON_CIS_FASTPATH
 static inline int prg_has_hygon_cis_fastpath_runtime_cached(void) {
-  static int cached = -1;
-  if (cached < 0) {
-    cached = hygon_cis_sm4_is_supported() ? 1 : 0;
+  /* Publish feature-cache values atomically across callers. */
+  static atomic_int cached = ATOMIC_VAR_INIT(-1);
+  int value = atomic_load_explicit(&cached, memory_order_acquire);
+  if (value < 0) {
+    value = hygon_cis_sm4_is_supported() ? 1 : 0;
+    atomic_store_explicit(&cached, value, memory_order_release);
   }
-  return cached;
+  return value;
 }
 #endif
 
@@ -102,71 +125,84 @@ static inline uint32_t prg_load_u32_be(const uint8_t* p) {
          (uint32_t)p[3];
 }
 
-static inline uint32_t sm4_key_sub_table(uint32_t x) {
-  static const uint8_t sm4_sbox_local[256] = {
-      0xD6, 0x90, 0xE9, 0xFE, 0xCC, 0xE1, 0x3D, 0xB7, 0x16, 0xB6, 0x14, 0xC2, 0x28, 0xFB,
-      0x2C, 0x05, 0x2B, 0x67, 0x9A, 0x76, 0x2A, 0xBE, 0x04, 0xC3, 0xAA, 0x44, 0x13, 0x26,
-      0x49, 0x86, 0x06, 0x99, 0x9C, 0x42, 0x50, 0xF4, 0x91, 0xEF, 0x98, 0x7A, 0x33, 0x54,
-      0x0B, 0x43, 0xED, 0xCF, 0xAC, 0x62, 0xE4, 0xB3, 0x1C, 0xA9, 0xC9, 0x08, 0xE8, 0x95,
-      0x80, 0xDF, 0x94, 0xFA, 0x75, 0x8F, 0x3F, 0xA6, 0x47, 0x07, 0xA7, 0xFC, 0xF3, 0x73,
-      0x17, 0xBA, 0x83, 0x59, 0x3C, 0x19, 0xE6, 0x85, 0x4F, 0xA8, 0x68, 0x6B, 0x81, 0xB2,
-      0x71, 0x64, 0xDA, 0x8B, 0xF8, 0xEB, 0x0F, 0x4B, 0x70, 0x56, 0x9D, 0x35, 0x1E, 0x24,
-      0x0E, 0x5E, 0x63, 0x58, 0xD1, 0xA2, 0x25, 0x22, 0x7C, 0x3B, 0x01, 0x21, 0x78, 0x87,
-      0xD4, 0x00, 0x46, 0x57, 0x9F, 0xD3, 0x27, 0x52, 0x4C, 0x36, 0x02, 0xE7, 0xA0, 0xC4,
-      0xC8, 0x9E, 0xEA, 0xBF, 0x8A, 0xD2, 0x40, 0xC7, 0x38, 0xB5, 0xA3, 0xF7, 0xF2, 0xCE,
-      0xF9, 0x61, 0x15, 0xA1, 0xE0, 0xAE, 0x5D, 0xA4, 0x9B, 0x34, 0x1A, 0x55, 0xAD, 0x93,
-      0x32, 0x30, 0xF5, 0x8C, 0xB1, 0xE3, 0x1D, 0xF6, 0xE2, 0x2E, 0x82, 0x66, 0xCA, 0x60,
-      0xC0, 0x29, 0x23, 0xAB, 0x0D, 0x53, 0x4E, 0x6F, 0xD5, 0xDB, 0x37, 0x45, 0xDE, 0xFD,
-      0x8E, 0x2F, 0x03, 0xFF, 0x6A, 0x72, 0x6D, 0x6C, 0x5B, 0x51, 0x8D, 0x1B, 0xAF, 0x92,
-      0xBB, 0xDD, 0xBC, 0x7F, 0x11, 0xD9, 0x5C, 0x41, 0x1F, 0x10, 0x5A, 0xD8, 0x0A, 0xC1,
-      0x31, 0x88, 0xA5, 0xCD, 0x7B, 0xBD, 0x2D, 0x74, 0xD0, 0x12, 0xB8, 0xE5, 0xB4, 0xB0,
-      0x89, 0x69, 0x97, 0x4A, 0x0C, 0x96, 0x77, 0x7E, 0x65, 0xB9, 0xF1, 0x09, 0xC5, 0x6E,
-      0xC6, 0x84, 0x18, 0xF0, 0x7D, 0xEC, 0x3A, 0xDC, 0x4D, 0x20, 0x79, 0xEE, 0x5F, 0x3E,
-      0xD7, 0xCB, 0x39, 0x48};
-  uint32_t t = ((uint32_t)sm4_sbox_local[(uint8_t)(x >> 24)] << 24) |
-               ((uint32_t)sm4_sbox_local[(uint8_t)(x >> 16)] << 16) |
-               ((uint32_t)sm4_sbox_local[(uint8_t)(x >> 8)] << 8) |
-               (uint32_t)sm4_sbox_local[(uint8_t)x];
-  return t ^ rotl32_u(t, 13) ^ rotl32_u(t, 23);
-}
-
-static void sm4_key_schedule_interleaved_4(const uint8_t* keys, size_t key_stride,
+/* All callers already require AES+SSSE3; expand four SM4 keys
+ * with the encryption kernel's register-only S-box and the key-schedule L'. */
+/* Share the AES kernel; select its F+VL specialization once per batch. */
+__attribute__((target("ssse3,aes"), always_inline)) static inline void
+sm4_key_schedule_interleaved_4_body(const uint8_t* keys, size_t key_stride,
                                            uint32_t rks[4][SM4_KEY_SCHEDULE]) {
-  uint32_t k0[4] = {0}, k1[4] = {0}, k2[4] = {0}, k3[4] = {0};
+  const __m128i c0f = {0x0F0F0F0F0F0F0F0FULL, 0x0F0F0F0F0F0F0F0FULL};
+  const __m128i shr = {0x0B0E0104070A0D00ULL, 0x0306090C0F020508ULL};
+  const __m128i m1l = {0x9197E2E474720701ULL, 0xC7C1B4B222245157ULL};
+  const __m128i m1h = {0xE240AB09EB49A200ULL, 0xF052B91BF95BB012ULL};
+  const __m128i m2l = {0x5B67F2CEA19D0834ULL, 0xEDD14478172BBE82ULL};
+  const __m128i m2h = {0xAE7201DD73AFDC00ULL, 0x11CDBE62CC1063BFULL};
+  uint32_t words[4][4];
 
   for (size_t lane = 0; lane < 4; ++lane) {
-    const uint8_t* key = keys + lane * key_stride;
-    k0[lane] = prg_load_u32_be(key) ^ FK[0];
-    k1[lane] = prg_load_u32_be(key + 4) ^ FK[1];
-    k2[lane] = prg_load_u32_be(key + 8) ^ FK[2];
-    k3[lane] = prg_load_u32_be(key + 12) ^ FK[3];
+    for (size_t word = 0; word < 4; ++word) {
+      words[word][lane] = prg_load_u32_be(keys + lane * key_stride + 4 * word) ^ FK[word];
+    }
   }
+  __m128i k0 = _mm_loadu_si128((const __m128i*)words[0]);
+  __m128i k1 = _mm_loadu_si128((const __m128i*)words[1]);
+  __m128i k2 = _mm_loadu_si128((const __m128i*)words[2]);
+  __m128i k3 = _mm_loadu_si128((const __m128i*)words[3]);
 
-  for (size_t i = 0; i < SM4_KEY_SCHEDULE; i += 4) {
+  for (size_t i = 0; i < SM4_KEY_SCHEDULE; ++i) {
+    __m128i x = k1 ^ k2 ^ k3 ^ _mm_set1_epi32((int)CK[i]);
+    __m128i y = _mm_shuffle_epi8(m1l, _mm_and_si128(x, c0f));
+    x = _mm_and_si128(_mm_srli_epi64(x, 4), c0f);
+    x = _mm_shuffle_epi8(m1h, x) ^ y;
+    x = _mm_shuffle_epi8(x, shr);
+    x = _mm_aesenclast_si128(x, c0f);
+    y = _mm_shuffle_epi8(m2l, _mm_andnot_si128(x, c0f));
+    x = _mm_and_si128(_mm_srli_epi64(x, 4), c0f);
+    x = _mm_shuffle_epi8(m2h, x) ^ y;
+
+    x ^= (_mm_slli_epi32(x, 13) ^ _mm_srli_epi32(x, 19)) ^
+         (_mm_slli_epi32(x, 23) ^ _mm_srli_epi32(x, 9));
+    x ^= k0;
+    k0 = k1;
+    k1 = k2;
+    k2 = k3;
+    k3 = x;
+    _mm_storeu_si128((__m128i*)words[0], x);
     for (size_t lane = 0; lane < 4; ++lane) {
-      k0[lane] ^= sm4_key_sub_table(k1[lane] ^ k2[lane] ^ k3[lane] ^ CK[i]);
-      rks[lane][i] = k0[lane];
-    }
-    for (size_t lane = 0; lane < 4; ++lane) {
-      k1[lane] ^= sm4_key_sub_table(k2[lane] ^ k3[lane] ^ k0[lane] ^ CK[i + 1]);
-      rks[lane][i + 1] = k1[lane];
-    }
-    for (size_t lane = 0; lane < 4; ++lane) {
-      k2[lane] ^= sm4_key_sub_table(k3[lane] ^ k0[lane] ^ k1[lane] ^ CK[i + 2]);
-      rks[lane][i + 2] = k2[lane];
-    }
-    for (size_t lane = 0; lane < 4; ++lane) {
-      k3[lane] ^= sm4_key_sub_table(k0[lane] ^ k1[lane] ^ k2[lane] ^ CK[i + 3]);
-      rks[lane][i + 3] = k3[lane];
+      rks[lane][i] = words[0][lane];
     }
   }
+}
+
+__attribute__((target("ssse3,aes"))) static void
+sm4_key_schedule_interleaved_4(const uint8_t* keys, size_t key_stride,
+                                           uint32_t rks[4][SM4_KEY_SCHEDULE]) {
+  sm4_key_schedule_interleaved_4_body(keys, key_stride, rks);
+}
+
+__attribute__((target("ssse3,aes,avx2,avx512f,avx512vl"))) static void
+sm4_key_schedule_interleaved_4_avx512(const uint8_t* keys, size_t key_stride,
+                                           uint32_t rks[4][SM4_KEY_SCHEDULE]) {
+  sm4_key_schedule_interleaved_4_body(keys, key_stride, rks);
+}
+
+/* Reuse AES+SSSE3 expansion for single keys and residual batches. */
+static void prg_sm4_expand_key1(const uint8_t* key, uint32_t* rk) {
+  if (prg_has_sm4_fastpath_runtime_cached()) {
+    uint32_t rks[4][SM4_KEY_SCHEDULE];
+    sm4_key_schedule_interleaved_4(key, 0, rks);
+    memcpy(rk, rks[0], sizeof(rks[0]));
+    return;
+  }
+  yuchen_sm4_key_schedule_impl(key, rk);
 }
 
 // adapted from sm4_encrypt4_opt in sm4ni.c to encrypt 4 blocks with 4 different keys in parallel
 // dst[lane] = SM4_Encrypt(rks[lane], src[lane])，lane=0..3。
 #if defined(__x86_64__) || defined(__i386__)
-__attribute__((target("ssse3,aes"))) static void
-sm4_encrypt4_diffkeys_1blk(uint32_t rks[4][SM4_KEY_SCHEDULE], const uint8_t* src, uint8_t* dst) {
+/* Share the AES kernel; select its F+VL specialization once per batch. */
+__attribute__((target("ssse3,aes"), always_inline)) static inline void
+sm4_encrypt4_diffkeys_1blk_body(uint32_t rks[4][SM4_KEY_SCHEDULE], const uint8_t* src, uint8_t* dst) {
   const __m128i c0f __attribute__((aligned(0x10))) = {0x0F0F0F0F0F0F0F0FULL,
                                                        0x0F0F0F0F0F0F0F0FULL};
   const __m128i flp __attribute__((aligned(0x10))) = {0x0405060700010203ULL,
@@ -255,6 +291,16 @@ sm4_encrypt4_diffkeys_1blk(uint32_t rks[4][SM4_KEY_SCHEDULE], const uint8_t* src
   out32[15] = v[3];
 }
 
+__attribute__((target("ssse3,aes"))) static void
+sm4_encrypt4_diffkeys_1blk(uint32_t rks[4][SM4_KEY_SCHEDULE], const uint8_t* src, uint8_t* dst) {
+  sm4_encrypt4_diffkeys_1blk_body(rks, src, dst);
+}
+
+__attribute__((target("ssse3,aes,avx2,avx512f,avx512vl"))) static void
+sm4_encrypt4_diffkeys_1blk_avx512(uint32_t rks[4][SM4_KEY_SCHEDULE], const uint8_t* src, uint8_t* dst) {
+  sm4_encrypt4_diffkeys_1blk_body(rks, src, dst);
+}
+
 #endif
 
 static inline void prg_sm4_ctr2_from_rk(const uint32_t* rk, const uint8_t* iv, uint32_t tweak,
@@ -338,9 +384,42 @@ static void generic_prg(const uint8_t* key, uint8_t* internal_iv, uint8_t* out,
   generic_sm4_ecb_free(&ctx);
 }
 
+
+#if PRG_HAS_INTEL_SM4_NI
+/* Preserve current IV/tweak encoding with JoCR native counters. */
+static inline void prg_intel_sm4_prepare_ctr2(const uint8_t* iv, uint32_t tweak,
+                                               uint8_t ctr[2][PRG_BLOCK_SIZE]) {
+  memcpy(ctr[0], iv, PRG_BLOCK_SIZE);
+  add_to_upper_word(ctr[0], tweak);
+  memcpy(ctr[1], ctr[0], PRG_BLOCK_SIZE);
+  prg_increment_iv(ctr[1]);
+}
+
+static inline void prg_intel_sm4_ctr2_from_rk(const uint32_t rk[SM4_KEY_SCHEDULE],
+                                               const uint8_t* iv, uint32_t tweak,
+                                               uint8_t* out) {
+  uint8_t ctr[2][PRG_BLOCK_SIZE];
+  uint8_t enc[2][PRG_BLOCK_SIZE];
+  prg_intel_sm4_prepare_ctr2(iv, tweak, ctr);
+  intel_sm4_ni_encrypt2_same_key(
+      rk, (const uint8_t (*)[PRG_BLOCK_SIZE])(const void*)ctr, enc);
+  memcpy(out, enc, 2u * PRG_BLOCK_SIZE);
+}
+#endif
+
 static inline void prg_2_lambda_single_impl(const uint8_t* key, const uint8_t* iv, uint32_t tweak,
                                              uint8_t* out, unsigned int seclvl,
                                              int use_sm4_fastpath) {
+#if PRG_HAS_INTEL_SM4_NI
+/* Native SM4 is preferred; packed schedules serve both PRG outputs. */
+  if (seclvl == 128u && prg_has_intel_sm4_ni_runtime_cached()) {
+    uint32_t rk[SM4_KEY_SCHEDULE];
+    intel_sm4_ni_expand_key1(key, rk);
+    prg_intel_sm4_ctr2_from_rk(rk, iv, tweak, out);
+    return;
+  }
+#endif
+
 #if PRG_HAS_HYGON_CIS_FASTPATH
   if (seclvl == 128u && prg_has_hygon_cis_fastpath_runtime_cached()) {
     prg_hygon_ctr2_from_key(key, iv, tweak, out);
@@ -350,7 +429,7 @@ static inline void prg_2_lambda_single_impl(const uint8_t* key, const uint8_t* i
 #if PRG_HAS_SM4_FASTPATH
   if (use_sm4_fastpath) {
     uint32_t rk[SM4_KEY_SCHEDULE];
-    yuchen_sm4_key_schedule_impl(key, rk);
+    prg_sm4_expand_key1(key, rk);
     prg_sm4_ctr2_from_rk(rk, iv, tweak, out);
     return;
   }
@@ -377,6 +456,30 @@ static void prg_2_lambda_independent_batch_impl(const uint8_t* keys, size_t key_
     return;
   }
 
+#if PRG_HAS_INTEL_SM4_NI
+/* Native SM4 is preferred; packed schedules serve both PRG outputs. */
+  if (prg_has_intel_sm4_ni_runtime_cached() && seclvl == 128u && out_stride == 32u) {
+    size_t i = 0;
+    while (i + 4u <= count) {
+      uint32_t rks[4][SM4_KEY_SCHEDULE];
+      intel_sm4_ni_expand_key4(keys + i * key_stride, (unsigned long)key_stride, rks);
+      for (size_t lane = 0; lane < 4u; ++lane) {
+        prg_intel_sm4_ctr2_from_rk(
+            rks[lane], iv, tweak_base + tweak_step * (uint32_t)(i + lane),
+            out + (i + lane) * out_stride);
+      }
+      i += 4u;
+    }
+    for (; i < count; ++i) {
+      uint32_t rk[SM4_KEY_SCHEDULE];
+      intel_sm4_ni_expand_key1(keys + i * key_stride, rk);
+      prg_intel_sm4_ctr2_from_rk(rk, iv, tweak_base + tweak_step * (uint32_t)i,
+                                 out + i * out_stride);
+    }
+    return;
+  }
+#endif
+
 #if PRG_HAS_HYGON_CIS_FASTPATH
   if (prg_has_hygon_cis_fastpath_runtime_cached() && seclvl == 128 && out_stride == 32) {
     size_t i = 0;
@@ -397,6 +500,7 @@ static void prg_2_lambda_independent_batch_impl(const uint8_t* keys, size_t key_
 
 #if PRG_HAS_SM4_FASTPATH
   if (prg_has_sm4_fastpath_runtime_cached() && seclvl == 128 && out_stride == 32) {
+    const int use_sm4_fvl = sm4th_x86_has_avx512f_vl();
     size_t i = 0;
     while (i + 4 <= count) {
       uint32_t rks[4][SM4_KEY_SCHEDULE];
@@ -405,7 +509,11 @@ static void prg_2_lambda_independent_batch_impl(const uint8_t* keys, size_t key_
       uint8_t enc0[4 * PRG_BLOCK_SIZE];
       uint8_t enc1[4 * PRG_BLOCK_SIZE];
 
-      sm4_key_schedule_interleaved_4(keys + i * key_stride, key_stride, rks);
+      if (use_sm4_fvl) {
+        sm4_key_schedule_interleaved_4_avx512(keys + i * key_stride, key_stride, rks);
+      } else {
+        sm4_key_schedule_interleaved_4(keys + i * key_stride, key_stride, rks);
+      }
 
       for (size_t lane = 0; lane < 4; ++lane) {
         uint8_t* ctr0_lane = ctr0 + lane * PRG_BLOCK_SIZE;
@@ -417,8 +525,13 @@ static void prg_2_lambda_independent_batch_impl(const uint8_t* keys, size_t key_
       }
 
 #if defined(__x86_64__) || defined(__i386__)
-      sm4_encrypt4_diffkeys_1blk(rks, ctr0, enc0);
-      sm4_encrypt4_diffkeys_1blk(rks, ctr1, enc1);
+      if (use_sm4_fvl) {
+        sm4_encrypt4_diffkeys_1blk_avx512(rks, ctr0, enc0);
+        sm4_encrypt4_diffkeys_1blk_avx512(rks, ctr1, enc1);
+      } else {
+        sm4_encrypt4_diffkeys_1blk(rks, ctr0, enc0);
+        sm4_encrypt4_diffkeys_1blk(rks, ctr1, enc1);
+      }
       for (size_t lane = 0; lane < 4; ++lane) {
         uint8_t* out_lane = out + (i + lane) * out_stride;
         memcpy(out_lane, enc0 + lane * PRG_BLOCK_SIZE, PRG_BLOCK_SIZE);
@@ -435,7 +548,7 @@ static void prg_2_lambda_independent_batch_impl(const uint8_t* keys, size_t key_
 
     for (; i < count; ++i) {
       uint32_t rk[SM4_KEY_SCHEDULE];
-      yuchen_sm4_key_schedule_impl(keys + i * key_stride, rk);
+      prg_sm4_expand_key1(keys + i * key_stride, rk);
       prg_sm4_ctr2_from_rk(rk, iv, tweak_base + tweak_step * (uint32_t)i, out + i * out_stride);
     }
     return;
@@ -499,6 +612,72 @@ static inline void prg_prepare_counters_16_plus_tail4(const uint8_t* iv, uint32_
 
 #define PRG_276_BYTES 276u
 #define PRG_HYGON_FUSED_276_BYTES 276u
+
+#if PRG_HAS_INTEL_SM4_NI
+/* Reuse four packed key schedules for the 2-counter and 6-counter kernels. */
+static inline void prg_intel_sm4_276_from_rk(const uint32_t rk[SM4_KEY_SCHEDULE],
+                                             const uint8_t* iv, uint32_t tweak,
+                                             uint8_t out[PRG_276_BYTES]) {
+  uint8_t counter[PRG_BLOCK_SIZE];
+  memcpy(counter, iv, sizeof(counter));
+  add_to_upper_word(counter, tweak);
+  for (size_t pair_index = 0; pair_index < 9u; ++pair_index) {
+    uint8_t ctr[2][PRG_BLOCK_SIZE];
+    uint8_t enc[2][PRG_BLOCK_SIZE];
+    memcpy(ctr[0], counter, PRG_BLOCK_SIZE);
+    prg_increment_iv(counter);
+    memcpy(ctr[1], counter, PRG_BLOCK_SIZE);
+    prg_increment_iv(counter);
+    intel_sm4_ni_encrypt2_same_key(
+        rk, (const uint8_t (*)[PRG_BLOCK_SIZE])(const void*)ctr, enc);
+    const size_t offset = pair_index * 2u * PRG_BLOCK_SIZE;
+    const size_t remaining = PRG_276_BYTES - offset;
+    const size_t take = remaining < 2u * PRG_BLOCK_SIZE ? remaining : 2u * PRG_BLOCK_SIZE;
+    memcpy(out + offset, enc, take);
+  }
+}
+
+static inline void prg_intel_sm4_2lambda_batch4(
+    const intel_sm4_ni_rk4_packed* rks, const uint8_t* iv, uint32_t tweak,
+    uint8_t* out0, uint8_t* out1, uint8_t* out2, uint8_t* out3) {
+  uint8_t ctr[2][PRG_BLOCK_SIZE];
+  prg_intel_sm4_prepare_ctr2(iv, tweak, ctr);
+  intel_sm4_ni_encrypt4_keys_2blocks_packed(
+      rks, (const uint8_t (*)[PRG_BLOCK_SIZE])(const void*)ctr,
+      out0, out1, out2, out3);
+}
+
+static inline void prg_intel_sm4_276_batch4(
+    const intel_sm4_ni_rk4_packed* rks, const uint8_t* iv, uint32_t tweak,
+    uint8_t* out0, uint8_t* out1, uint8_t* out2, uint8_t* out3) {
+  uint8_t counter[PRG_BLOCK_SIZE];
+  memcpy(counter, iv, sizeof(counter));
+  add_to_upper_word(counter, tweak);
+  for (size_t chunk = 0; chunk < 3u; ++chunk) {
+    uint8_t ctr[6][PRG_BLOCK_SIZE];
+    for (size_t block = 0; block < 6u; ++block) {
+      memcpy(ctr[block], counter, PRG_BLOCK_SIZE);
+      prg_increment_iv(counter);
+    }
+    const size_t offset = chunk * 6u * PRG_BLOCK_SIZE;
+    if (chunk < 2u) {
+      intel_sm4_ni_encrypt4_keys_6blocks_packed(
+          rks, (const uint8_t (*)[PRG_BLOCK_SIZE])(const void*)ctr,
+          out0 + offset, out1 + offset, out2 + offset, out3 + offset);
+    } else {
+      uint8_t tail[4][6 * PRG_BLOCK_SIZE];
+      intel_sm4_ni_encrypt4_keys_6blocks_packed(
+          rks, (const uint8_t (*)[PRG_BLOCK_SIZE])(const void*)ctr,
+          tail[0], tail[1], tail[2], tail[3]);
+      const size_t take = PRG_276_BYTES - offset;
+      memcpy(out0 + offset, tail[0], take);
+      memcpy(out1 + offset, tail[1], take);
+      memcpy(out2 + offset, tail[2], take);
+      memcpy(out3 + offset, tail[3], take);
+    }
+  }
+}
+#endif
 
 #if PRG_HAS_HYGON_CIS_FASTPATH
 static inline void prg_hygon_276_from_rk_precomp(const uint32_t* rk,
@@ -590,6 +769,16 @@ static inline void prg_276_batch4_generate_precomp_mode(
 #endif
 
 static void prg_276(const uint8_t* key, const uint8_t* iv, uint32_t tweak, uint8_t* out) {
+#if PRG_HAS_INTEL_SM4_NI
+/* Native SM4 is preferred; packed schedules serve both PRG outputs. */
+  if (prg_has_intel_sm4_ni_runtime_cached()) {
+    uint32_t rk[SM4_KEY_SCHEDULE];
+    intel_sm4_ni_expand_key1(key, rk);
+    prg_intel_sm4_276_from_rk(rk, iv, tweak, out);
+    return;
+  }
+#endif
+
 #if PRG_HAS_HYGON_CIS_FASTPATH
   if (prg_has_hygon_cis_fastpath_runtime_cached()) {
     uint32_t rk[SM4_KEY_SCHEDULE];
@@ -609,7 +798,7 @@ static void prg_276(const uint8_t* key, const uint8_t* iv, uint32_t tweak, uint8
   }
 
   uint32_t rk[SM4_KEY_SCHEDULE];
-  yuchen_sm4_key_schedule_impl(key, rk);
+  prg_sm4_expand_key1(key, rk);
   prg_276_from_rk(rk, iv, tweak, out);
 #else
   uint8_t internal_iv[PRG_BLOCK_SIZE];
@@ -624,6 +813,17 @@ static inline void prg_2lambda_and_276_single_impl(const uint8_t* key, const uin
                                                    uint8_t* out2, uint8_t* out276,
                                                    unsigned int seclvl,
                                                    int use_sm4_fastpath) {
+#if PRG_HAS_INTEL_SM4_NI
+/* Native SM4 is preferred; packed schedules serve both PRG outputs. */
+  if (seclvl == 128u && prg_has_intel_sm4_ni_runtime_cached()) {
+    uint32_t rk[SM4_KEY_SCHEDULE];
+    intel_sm4_ni_expand_key1(key, rk);
+    prg_intel_sm4_ctr2_from_rk(rk, iv, tweak_2lambda, out2);
+    prg_intel_sm4_276_from_rk(rk, iv, tweak_276, out276);
+    return;
+  }
+#endif
+
 #if PRG_HAS_HYGON_CIS_FASTPATH
   if (PRG_276_BYTES == PRG_HYGON_FUSED_276_BYTES && seclvl == 128u &&
       prg_has_hygon_cis_fastpath_runtime_cached()) {
@@ -641,7 +841,7 @@ static inline void prg_2lambda_and_276_single_impl(const uint8_t* key, const uin
 #if PRG_HAS_SM4_FASTPATH
   if (use_sm4_fastpath && seclvl == 128u) {
     uint32_t rk[SM4_KEY_SCHEDULE];
-    yuchen_sm4_key_schedule_impl(key, rk);
+    prg_sm4_expand_key1(key, rk);
     prg_sm4_ctr2_from_rk(rk, iv, tweak_2lambda, out2);
     prg_276_from_rk(rk, iv, tweak_276, out276);
     return;
@@ -661,6 +861,50 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd(
   }
 
   const size_t lambda_bytes = seclvl / 8;
+
+#if PRG_HAS_INTEL_SM4_NI
+/* Native SM4 is preferred; packed schedules serve both PRG outputs. */
+  if (prg_has_intel_sm4_ni_runtime_cached() && seclvl == 128u &&
+      out_2lambda_stride == 32u && out_276_stride == PRG_276_BYTES) {
+    size_t i = 0;
+    while (i + 4u <= count) {
+      intel_sm4_ni_rk4_packed rks;
+      intel_sm4_ni_expand_key4_packed(keys + i * key_stride, (unsigned long)key_stride,
+                                      &rks);
+      for (size_t lane = 0; lane < 4u; ++lane) {
+        const size_t idx = i + lane;
+        const uint8_t* key_lane = keys + idx * key_stride;
+        uint8_t* sd_lane = sd_out + idx * sd_stride;
+        if (sd_lane != key_lane) {
+          memcpy(sd_lane, key_lane, lambda_bytes);
+        }
+      }
+      prg_intel_sm4_2lambda_batch4(
+          &rks, iv, tweak_2lambda, out_2lambda + (i + 0u) * out_2lambda_stride,
+          out_2lambda + (i + 1u) * out_2lambda_stride,
+          out_2lambda + (i + 2u) * out_2lambda_stride,
+          out_2lambda + (i + 3u) * out_2lambda_stride);
+      prg_intel_sm4_276_batch4(
+          &rks, iv, tweak_276, out_276 + (i + 0u) * out_276_stride,
+          out_276 + (i + 1u) * out_276_stride, out_276 + (i + 2u) * out_276_stride,
+          out_276 + (i + 3u) * out_276_stride);
+      i += 4u;
+    }
+    for (; i < count; ++i) {
+      uint32_t rk[SM4_KEY_SCHEDULE];
+      const uint8_t* key_i = keys + i * key_stride;
+      uint8_t* sd_i = sd_out + i * sd_stride;
+      intel_sm4_ni_expand_key1(key_i, rk);
+      if (sd_i != key_i) {
+        memcpy(sd_i, key_i, lambda_bytes);
+      }
+      prg_intel_sm4_ctr2_from_rk(rk, iv, tweak_2lambda,
+                                 out_2lambda + i * out_2lambda_stride);
+      prg_intel_sm4_276_from_rk(rk, iv, tweak_276, out_276 + i * out_276_stride);
+    }
+    return;
+  }
+#endif
 
 #if PRG_HAS_HYGON_CIS_FASTPATH
   if (PRG_276_BYTES == PRG_HYGON_FUSED_276_BYTES &&
@@ -742,7 +986,8 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd(
 #if PRG_HAS_SM4_FASTPATH
   if (prg_has_sm4_fastpath_runtime_cached() && seclvl == 128 && out_2lambda_stride == 32 &&
       out_276_stride == PRG_276_BYTES) {
-    const int use_prg276_ecb16 = (sm4_aesni_avx2_asm_ecb_enc_blk_16 != NULL);
+    const int use_sm4_fvl = sm4th_x86_has_avx512f_vl();
+    const int use_prg276_ecb16 = (sm4_aesni_avx2_asm_ecb_enc_blk_16 != NULL) && sm4th_x86_has_avx2();
     uint8_t prg276_ctr16[16 * PRG_BLOCK_SIZE];
     uint8_t prg276_ctr_tail4[4 * PRG_BLOCK_SIZE];
     uint8_t ctr0[4 * PRG_BLOCK_SIZE];
@@ -765,11 +1010,20 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd(
       uint8_t enc0[4 * PRG_BLOCK_SIZE];
       uint8_t enc1[4 * PRG_BLOCK_SIZE];
 
-      sm4_key_schedule_interleaved_4(keys + i * key_stride, key_stride, rks);
+      if (use_sm4_fvl) {
+        sm4_key_schedule_interleaved_4_avx512(keys + i * key_stride, key_stride, rks);
+      } else {
+        sm4_key_schedule_interleaved_4(keys + i * key_stride, key_stride, rks);
+      }
 
 #if defined(__x86_64__) || defined(__i386__)
-      sm4_encrypt4_diffkeys_1blk(rks, ctr0, enc0);
-      sm4_encrypt4_diffkeys_1blk(rks, ctr1, enc1);
+      if (use_sm4_fvl) {
+        sm4_encrypt4_diffkeys_1blk_avx512(rks, ctr0, enc0);
+        sm4_encrypt4_diffkeys_1blk_avx512(rks, ctr1, enc1);
+      } else {
+        sm4_encrypt4_diffkeys_1blk(rks, ctr0, enc0);
+        sm4_encrypt4_diffkeys_1blk(rks, ctr1, enc1);
+      }
       for (size_t lane = 0; lane < 4; ++lane) {
         const size_t idx = i + lane;
         const uint8_t* key_lane = keys + idx * key_stride;
@@ -808,7 +1062,7 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd(
       uint8_t* sd_i = sd_out + i * sd_stride;
       uint8_t* out2_i = out_2lambda + i * out_2lambda_stride;
       uint8_t* out276_i = out_276 + i * out_276_stride;
-      yuchen_sm4_key_schedule_impl(key_i, rk);
+      prg_sm4_expand_key1(key_i, rk);
       if (sd_i != key_i) {
         memcpy(sd_i, key_i, lambda_bytes);
       }
@@ -844,6 +1098,62 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd_xor_map(
   }
 
   const size_t lambda_bytes = seclvl / 8;
+
+#if PRG_HAS_INTEL_SM4_NI
+/* Native SM4 is preferred; packed schedules serve both PRG outputs. */
+  if (prg_has_intel_sm4_ni_runtime_cached() && seclvl == 128u &&
+      out_2lambda_stride == 32u && out_276_stride == PRG_276_BYTES) {
+    size_t i = 0;
+    while (i + 4u <= count) {
+      intel_sm4_ni_rk4_packed rks;
+      uint8_t* out276_ptr[4];
+      uint8_t scratch276[4][PRG_276_BYTES];
+      intel_sm4_ni_expand_key4_packed(keys + i * key_stride, (unsigned long)key_stride,
+                                      &rks);
+      for (size_t lane = 0; lane < 4u; ++lane) {
+        const size_t idx = i + lane;
+        uint8_t* sd_lane =
+            prg_sd_xor_map_slot(sd_out, sd_stride, idx, sd_index_base, sd_index_xor);
+        out276_ptr[lane] =
+            prg_sd_xor_map_slot(out_276, out_276_stride, idx, sd_index_base, sd_index_xor);
+        if (sd_lane) {
+          memcpy(sd_lane, keys + idx * key_stride, lambda_bytes);
+        }
+      }
+      prg_intel_sm4_2lambda_batch4(
+          &rks, iv, tweak_2lambda, out_2lambda + (i + 0u) * out_2lambda_stride,
+          out_2lambda + (i + 1u) * out_2lambda_stride,
+          out_2lambda + (i + 2u) * out_2lambda_stride,
+          out_2lambda + (i + 3u) * out_2lambda_stride);
+      for (size_t lane = 0; lane < 4u; ++lane) {
+        if (!out276_ptr[lane]) {
+          out276_ptr[lane] = scratch276[lane];
+        }
+      }
+      prg_intel_sm4_276_batch4(&rks, iv, tweak_276, out276_ptr[0], out276_ptr[1],
+                               out276_ptr[2], out276_ptr[3]);
+      i += 4u;
+    }
+    for (; i < count; ++i) {
+      uint32_t rk[SM4_KEY_SCHEDULE];
+      const uint8_t* key_i = keys + i * key_stride;
+      uint8_t* sd_i =
+          prg_sd_xor_map_slot(sd_out, sd_stride, i, sd_index_base, sd_index_xor);
+      uint8_t* out276_i =
+          prg_sd_xor_map_slot(out_276, out_276_stride, i, sd_index_base, sd_index_xor);
+      intel_sm4_ni_expand_key1(key_i, rk);
+      if (sd_i) {
+        memcpy(sd_i, key_i, lambda_bytes);
+      }
+      prg_intel_sm4_ctr2_from_rk(rk, iv, tweak_2lambda,
+                                 out_2lambda + i * out_2lambda_stride);
+      if (out276_i) {
+        prg_intel_sm4_276_from_rk(rk, iv, tweak_276, out276_i);
+      }
+    }
+    return;
+  }
+#endif
 
 #if PRG_HAS_HYGON_CIS_FASTPATH
   if (PRG_276_BYTES == PRG_HYGON_FUSED_276_BYTES &&
@@ -972,7 +1282,8 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd_xor_map(
 #if PRG_HAS_SM4_FASTPATH
   if (prg_has_sm4_fastpath_runtime_cached() && seclvl == 128 && out_2lambda_stride == 32 &&
       out_276_stride == PRG_276_BYTES) {
-    const int use_prg276_ecb16 = (sm4_aesni_avx2_asm_ecb_enc_blk_16 != NULL);
+    const int use_sm4_fvl = sm4th_x86_has_avx512f_vl();
+    const int use_prg276_ecb16 = (sm4_aesni_avx2_asm_ecb_enc_blk_16 != NULL) && sm4th_x86_has_avx2();
     uint8_t prg276_ctr16[16 * PRG_BLOCK_SIZE];
     uint8_t prg276_ctr_tail4[4 * PRG_BLOCK_SIZE];
     uint8_t ctr0[4 * PRG_BLOCK_SIZE];
@@ -995,11 +1306,20 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd_xor_map(
       uint8_t enc0[4 * PRG_BLOCK_SIZE];
       uint8_t enc1[4 * PRG_BLOCK_SIZE];
 
-      sm4_key_schedule_interleaved_4(keys + i * key_stride, key_stride, rks);
+      if (use_sm4_fvl) {
+        sm4_key_schedule_interleaved_4_avx512(keys + i * key_stride, key_stride, rks);
+      } else {
+        sm4_key_schedule_interleaved_4(keys + i * key_stride, key_stride, rks);
+      }
 
 #if defined(__x86_64__) || defined(__i386__)
-      sm4_encrypt4_diffkeys_1blk(rks, ctr0, enc0);
-      sm4_encrypt4_diffkeys_1blk(rks, ctr1, enc1);
+      if (use_sm4_fvl) {
+        sm4_encrypt4_diffkeys_1blk_avx512(rks, ctr0, enc0);
+        sm4_encrypt4_diffkeys_1blk_avx512(rks, ctr1, enc1);
+      } else {
+        sm4_encrypt4_diffkeys_1blk(rks, ctr0, enc0);
+        sm4_encrypt4_diffkeys_1blk(rks, ctr1, enc1);
+      }
       uint8_t* out276_0 =
           prg_sd_xor_map_slot(out_276, out_276_stride, i + 0, sd_index_base, sd_index_xor);
       uint8_t* out276_1 =
@@ -1056,7 +1376,7 @@ void prg_2_lambda_and_276_fixed_tweak_independent_batch_with_sd_xor_map(
           prg_sd_xor_map_slot(sd_out, sd_stride, i, sd_index_base, sd_index_xor);
       uint8_t* out276_i =
           prg_sd_xor_map_slot(out_276, out_276_stride, i, sd_index_base, sd_index_xor);
-      yuchen_sm4_key_schedule_impl(key_i, rk);
+      prg_sm4_expand_key1(key_i, rk);
       if (sd_i) {
         memcpy(sd_i, key_i, lambda_bytes);
       }

@@ -23,7 +23,6 @@ void prg_2_lambda_fixed_tweak_independent_batch_with_sd_xor_map(
 void prg_fixed_tweak_independent_batch(const uint8_t* keys, size_t key_stride, const uint8_t* iv,
                                        uint32_t tweak, uint8_t* out, size_t out_stride,
                                        unsigned int seclvl, size_t outlen, size_t count);
-void prg_4_lambda(const uint8_t* key, const uint8_t* iv, uint32_t tweak, uint8_t* out,
-                  unsigned int seclvl);
+/* Removed the unused four-seed PRG declaration. */
 
 #endif

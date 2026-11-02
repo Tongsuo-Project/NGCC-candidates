@@ -1,6 +1,7 @@
+#include "macros.h"
+#include "compat.h"
 #include "sm4th_sm4_128.h"
 #include "fields.h"
-#include "macros.h"
 #include "vole.h"
 #include "utils.h"
 #include "universal_hashing.h"
@@ -55,24 +56,33 @@ static void constant_to_vole_SSS_prover(bfSSS_t* tag, unsigned int n);
 static void constant_to_vole_SSS_verifier(bfSSS_t* key, const uint8_t* val, bfSSS_t delta,
                                           unsigned int n);
 
+#if REF_USE_LOOKUP_TABLES
 static bfSSS_t g_sm4_byte_combine_bits_lut[256];
-static bfSSS_t g_sm4_byte_combine_bits_sq_lut[256];
+#endif
+/* d3 has no callers for the separate squared-byte lookup helper. */
+#if REF_USE_LOOKUP_TABLES
 static uint8_t g_sm4_bf8_square_lut[256][8];
+#endif
+#if REF_USE_LOOKUP_TABLES
 static bfSSS_t g_sm4_coeff_conj_lut[256][8];
-static int g_sm4_byte_combine_bits_lut_ready = 0;
-static bfSSS_t g_sm4_current_delta;
-static bfSSS_t g_sm4_current_delta_sq;
-static int g_sm4_norm_verifier_mode = 0;
-static void sm4_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx* hasher,
+#endif
+/* Delta and mode are explicit per-proof state, including reentrant calls. */
+typedef struct {
+  bfSSS_t delta;
+  bfSSS_t delta_sq;
+  int verifier_mode;
+} sm4_call_context_t;
+static void sm4_SSS_constraints_prover(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_3_ctx* hasher,
                                        const uint8_t* w, const bfSSS_t* w_tag,
                                        const uint8_t* owf_in, const uint8_t* owf_out);
-static void sm4_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx* hasher,
+static void sm4_SSS_constraints_verifier(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_ctx* hasher,
                                          const bfSSS_t* w_key, const uint8_t* owf_in,
                                          const uint8_t* owf_out, bfSSS_t delta);
 
 static void sm4_byte_combine_bits_lut_ensure(void);
 static inline bfSSS_t sm4_byte_combine_bits_lut(uint8_t x);
-static inline bfSSS_t sm4_byte_combine_bits_sq_lut(uint8_t x);
 
 static inline uint64_t bit_transpose8x8_u64(uint64_t x) {
   uint64_t t;
@@ -85,13 +95,10 @@ static inline uint64_t bit_transpose8x8_u64(uint64_t x) {
   return x;
 }
 
-static void sm4_byte_combine_bits_lut_ensure(void) {
-  if (g_sm4_byte_combine_bits_lut_ready) {
-    return;
-  }
+#if REF_USE_LOOKUP_TABLES
+static void sm4_byte_combine_bits_lut_ensure_initialize(void) {
   for (unsigned int i = 0; i < 256u; ++i) {
     g_sm4_byte_combine_bits_lut[i] = bfSSS_byte_combine_bits((uint8_t)i);
-    g_sm4_byte_combine_bits_sq_lut[i] = bfSSS_byte_combine_bits_sq((uint8_t)i);
     uint8_t sq = (uint8_t)i;
     for (unsigned int s = 0u; s != 8u; ++s) {
       g_sm4_bf8_square_lut[i][s] = sq;
@@ -99,15 +106,25 @@ static void sm4_byte_combine_bits_lut_ensure(void) {
       sq = bits_sq_sm4(sq);
     }
   }
-  g_sm4_byte_combine_bits_lut_ready = 1;
+}
+#endif
+
+/* Serialize first initialization and publish the read-only table. */
+static void sm4_byte_combine_bits_lut_ensure(void) {
+#if REF_USE_LOOKUP_TABLES
+  static ref_once_t once = REF_ONCE_INIT;
+  ref_call_once(&once, sm4_byte_combine_bits_lut_ensure_initialize);
+#else
+  /* Arithmetic path has no mutable lookup cache to initialize. */
+#endif
 }
 
 static inline bfSSS_t sm4_byte_combine_bits_lut(uint8_t x) {
+#if REF_USE_LOOKUP_TABLES
   return g_sm4_byte_combine_bits_lut[x];
-}
-
-static inline bfSSS_t sm4_byte_combine_bits_sq_lut(uint8_t x) {
-  return g_sm4_byte_combine_bits_sq_lut[x];
+#else
+  return bfSSS_byte_combine_bits(x);
+#endif
 }
 
 typedef struct {
@@ -122,30 +139,36 @@ typedef struct {
   sm4_norm_byte_expr_t byte[4];
 } sm4_norm_word_expr_t;
 
-static void sm4_SSS_enc_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx* hasher,
+static void sm4_SSS_enc_constraints_prover(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_3_ctx* hasher,
                                            const uint8_t* in, const bfSSS_t* in_tag,
                                            const uint8_t* out, const bfSSS_t* out_tag,
                                            const uint8_t* w, const bfSSS_t* w_tag,
                                            const uint8_t* k, const bfSSS_t* k_tag,
                                            int k_tag_is_zero);
-static void sm4_SSS_enc_constraints_verifier(const params_t* params, zk_hash_SSS_ctx* hasher,
+static void sm4_SSS_enc_constraints_verifier(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_ctx* hasher,
                                              const bfSSS_t* in_key, const bfSSS_t* out_key,
                                              const bfSSS_t* w_key, const bfSSS_t* k_key,
                                              const bfSSS_t delta);
-static void sm4_norm_build_key_words_prover(const uint8_t* w, const bfSSS_t* w_tag,
+static void sm4_norm_build_key_words_prover(const sm4_call_context_t* ctx,
+    const uint8_t* w, const bfSSS_t* w_tag,
                                             sm4_norm_word_expr_t K[36],
                                             zk_hash_SSS_3_ctx* hasher);
-static void sm4_norm_build_key_words_verifier(const bfSSS_t* w_key,
+static void sm4_norm_build_key_words_verifier(const sm4_call_context_t* ctx,
+    const bfSSS_t* w_key,
                                               sm4_norm_word_expr_t K[36],
                                               zk_hash_SSS_ctx* hasher,
                                               bfSSS_t delta,
                                               const bfSSS_t delta_conj[8]);
-static void sm4_norm_build_enc_words_prover(const uint8_t* in, const bfSSS_t* in_tag,
+static void sm4_norm_build_enc_words_prover(const sm4_call_context_t* ctx,
+    const uint8_t* in, const bfSSS_t* in_tag,
                                             const uint8_t* out, const bfSSS_t* out_tag,
                                             const uint8_t* w, const bfSSS_t* w_tag,
                                             const sm4_norm_word_expr_t K[36],
                                             zk_hash_SSS_3_ctx* hasher);
-static void sm4_norm_build_enc_words_verifier(const bfSSS_t* in_key,
+static void sm4_norm_build_enc_words_verifier(const sm4_call_context_t* ctx,
+    const bfSSS_t* in_key,
                                               const bfSSS_t* out_key,
                                               const bfSSS_t* w_key,
                                               const sm4_norm_word_expr_t K[36],
@@ -237,8 +260,22 @@ static const uint8_t SM4_WORDMAP_LP_AFTER_AFFINE[4][4][8] = {
      {0x18,0x06,0x91,0xe9,0xf4,0xc8,0xe6,0x77}}};
 
 static uint8_t sm4_bf8_square_n(uint8_t x, unsigned int n) {
+#if REF_USE_LOOKUP_TABLES
   return g_sm4_bf8_square_lut[x][n & 7u];
+#else
+  for (unsigned int i = 0; i != (n & 7u); ++i) x = bits_sq_sm4(x);
+  return x;
+#endif
 }
+
+static bfSSS_t sm4_coeff_conj(uint8_t coeff, unsigned int square_count) {
+#if REF_USE_LOOKUP_TABLES
+  return g_sm4_coeff_conj_lut[coeff][square_count & 7u];
+#else
+  return bfSSS_byte_combine_bits(sm4_bf8_square_n(coeff, square_count));
+#endif
+}
+
 
 static const bfSSS_t* sm4_norm_byte_coeffs(const sm4_norm_byte_expr_t* in,
                                            unsigned int degree) {
@@ -257,26 +294,27 @@ static bfSSS_t* sm4_norm_byte_coeffs_mut(sm4_norm_byte_expr_t* in, unsigned int 
   }
 }
 
-static bfSSS_t sm4_norm_delta_pow(unsigned int shift) {
+static bfSSS_t sm4_norm_delta_pow(const sm4_call_context_t* ctx,
+    unsigned int shift) {
   if (shift == 0u) {
     return bfSSS_one();
   }
   if (shift == 1u) {
-    return g_sm4_current_delta;
+    return ctx->delta;
   }
-  return g_sm4_current_delta_sq;
+  return ctx->delta_sq;
 }
 
 static bfSSS_t sm4_coeff_mul_conj(uint8_t coeff, unsigned int square_count, bfSSS_t x) {
   const unsigned int s = square_count & 7u;
-  const uint8_t c = g_sm4_bf8_square_lut[coeff][s];
+  const uint8_t c = sm4_bf8_square_n(coeff, s);
   if (c == 0) {
     return bfSSS_zero();
   }
   if (c == 1) {
     return x;
   }
-  return bfSSS_mul(g_sm4_coeff_conj_lut[coeff][s], x);
+  return bfSSS_mul(sm4_coeff_conj(coeff, s), x);
 }
 
 static bfSSS_t sm4_coeff_linear_comb_degree(const uint8_t coeffs[8],
@@ -326,19 +364,10 @@ static uint8_t sm4_unpack_norm_nibble(const uint8_t* packed, unsigned int idx) {
 
 static uint8_t sm4_norm_nibble_conjugate_byte(uint8_t nibble, unsigned int conj) {
   const unsigned int j = conj & 3u;
-  uint8_t h = 0u;
-  if (nibble & 0x1u) {
-    h ^= 0x01u;
-  }
-  if (nibble & 0x2u) {
-    h ^= SM4_NORM_BETA4_SQ[j];
-  }
-  if (nibble & 0x4u) {
-    h ^= SM4_NORM_BETA4_SQ[j + 1u];
-  }
-  if (nibble & 0x8u) {
-    h ^= SM4_NORM_BETA4_CUBE[j];
-  }
+  uint8_t h = (uint8_t)(nibble & 1u);
+  h ^= (uint8_t)((0u - ((nibble >> 1) & 1u)) & SM4_NORM_BETA4_SQ[j]);
+  h ^= (uint8_t)((0u - ((nibble >> 2) & 1u)) & SM4_NORM_BETA4_SQ[j + 1u]);
+  h ^= (uint8_t)((0u - ((nibble >> 3) & 1u)) & SM4_NORM_BETA4_CUBE[j]);
   return h;
 }
 
@@ -378,16 +407,17 @@ static void sm4_norm_byte_public_verifier(sm4_norm_byte_expr_t* out, uint8_t val
   }
 }
 
-static void sm4_norm_byte_add(sm4_norm_byte_expr_t* out, const sm4_norm_byte_expr_t* a,
+static void sm4_norm_byte_add(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out, const sm4_norm_byte_expr_t* a,
                               const sm4_norm_byte_expr_t* b) {
   const unsigned int degree = a->degree > b->degree ? a->degree : b->degree;
   out->value = (uint8_t)(a->value ^ b->value);
   out->degree = degree;
-  if (g_sm4_norm_verifier_mode) {
+  if (ctx->verifier_mode) {
     const unsigned int ashift = degree - a->degree;
     const unsigned int bshift = degree - b->degree;
-    const bfSSS_t apow = ashift == 0u ? bfSSS_zero() : sm4_norm_delta_pow(ashift);
-    const bfSSS_t bpow = bshift == 0u ? bfSSS_zero() : sm4_norm_delta_pow(bshift);
+    const bfSSS_t apow = ashift == 0u ? bfSSS_zero() : sm4_norm_delta_pow(ctx, ashift);
+    const bfSSS_t bpow = bshift == 0u ? bfSSS_zero() : sm4_norm_delta_pow(ctx, bshift);
     const bfSSS_t zero = bfSSS_zero();
     for (unsigned int i = 0; i != 8u; ++i) {
       const bfSSS_t aconj = ashift == 0u ? a->conj[i] : bfSSS_mul(apow, a->conj[i]);
@@ -446,10 +476,11 @@ static void sm4_norm_byte_add(sm4_norm_byte_expr_t* out, const sm4_norm_byte_exp
   }
 }
 
-static void sm4_norm_word_add(sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* a,
+static void sm4_norm_word_add(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* a,
                               const sm4_norm_word_expr_t* b) {
   for (unsigned int i = 0; i != 4u; ++i) {
-    sm4_norm_byte_add(&out->byte[i], &a->byte[i], &b->byte[i]);
+    sm4_norm_byte_add(ctx, &out->byte[i], &a->byte[i], &b->byte[i]);
   }
 }
 
@@ -485,7 +516,8 @@ static void sm4_norm_delta_conjugates(bfSSS_t out[8], bfSSS_t delta) {
   }
 }
 
-static void sm4_norm_byte_linearized(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_linearized(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                      const sm4_norm_byte_expr_t* in,
                                      const uint8_t coeffs[8], uint8_t constant,
                                      uint8_t (*byte_map)(uint8_t),
@@ -495,7 +527,7 @@ static void sm4_norm_byte_linearized(sm4_norm_byte_expr_t* out,
   for (unsigned int s = 0; s != 8u; ++s) {
     bfSSS_t acc = sm4_coeff_linear_comb_degree(coeffs, s, in, 0u);
     if (delta_conj) {
-      acc = bfSSS_add(acc, bfSSS_mul(sm4_norm_delta_pow(out->degree),
+      acc = bfSSS_add(acc, bfSSS_mul(sm4_norm_delta_pow(ctx, out->degree),
                                      sm4_byte_combine_bits_lut(sm4_bf8_square_n(constant, s))));
       out->conj[s] = acc;
       out->lin[s] = bfSSS_zero();
@@ -513,7 +545,8 @@ static void sm4_norm_byte_linearized(sm4_norm_byte_expr_t* out,
   }
 }
 
-static void sm4_norm_byte_linearized_first2(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_linearized_first2(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                             const sm4_norm_byte_expr_t* in,
                                             const uint8_t coeffs[8],
                                             uint8_t constant,
@@ -524,7 +557,7 @@ static void sm4_norm_byte_linearized_first2(sm4_norm_byte_expr_t* out,
   for (unsigned int s = 0; s != 2u; ++s) {
     bfSSS_t acc = sm4_coeff_linear_comb_degree(coeffs, s, in, 0u);
     if (delta_conj) {
-      acc = bfSSS_add(acc, bfSSS_mul(sm4_norm_delta_pow(out->degree),
+      acc = bfSSS_add(acc, bfSSS_mul(sm4_norm_delta_pow(ctx, out->degree),
                                      sm4_byte_combine_bits_lut(sm4_bf8_square_n(constant, s))));
       out->conj[s] = acc;
       out->lin[s] = bfSSS_zero();
@@ -542,59 +575,66 @@ static void sm4_norm_byte_linearized_first2(sm4_norm_byte_expr_t* out,
   }
 }
 
-static void sm4_norm_byte_affine_prover(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_affine_prover(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                         const sm4_norm_byte_expr_t* in) {
-  sm4_norm_byte_linearized(out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
+  sm4_norm_byte_linearized(ctx, out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
                            sm4_affine_byte, NULL);
 }
 
-static void sm4_norm_byte_affine_verifier(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_affine_verifier(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                           const sm4_norm_byte_expr_t* in,
                                           const bfSSS_t delta_conj[8]) {
-  sm4_norm_byte_linearized(out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
+  sm4_norm_byte_linearized(ctx, out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
                            NULL, delta_conj);
 }
 
-static void sm4_norm_byte_affine2_prover(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_affine2_prover(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                          const sm4_norm_byte_expr_t* in) {
-  sm4_norm_byte_linearized_first2(out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
+  sm4_norm_byte_linearized_first2(ctx, out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
                                   sm4_affine_byte, NULL);
 }
 
-static void sm4_norm_byte_affine2_verifier(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_affine2_verifier(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                            const sm4_norm_byte_expr_t* in,
                                            const bfSSS_t delta_conj[8]) {
-  sm4_norm_byte_linearized_first2(out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
+  sm4_norm_byte_linearized_first2(ctx, out, in, SM4_AFFINE_LIN_COEFFS, SM4_AFFINE_CONST,
                                   NULL, delta_conj);
 }
 
-static void sm4_norm_byte_inv_affine2_prover(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_inv_affine2_prover(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                              const sm4_norm_byte_expr_t* in) {
-  sm4_norm_byte_linearized_first2(out, in, SM4_INV_AFFINE_LIN_COEFFS, SM4_INV_AFFINE_CONST,
+  sm4_norm_byte_linearized_first2(ctx, out, in, SM4_INV_AFFINE_LIN_COEFFS, SM4_INV_AFFINE_CONST,
                                   sm4_inv_affine_byte, NULL);
 }
 
-static void sm4_norm_byte_inv_affine2_verifier(sm4_norm_byte_expr_t* out,
+static void sm4_norm_byte_inv_affine2_verifier(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* out,
                                                const sm4_norm_byte_expr_t* in,
                                                const bfSSS_t delta_conj[8]) {
-  sm4_norm_byte_linearized_first2(out, in, SM4_INV_AFFINE_LIN_COEFFS, SM4_INV_AFFINE_CONST,
+  sm4_norm_byte_linearized_first2(ctx, out, in, SM4_INV_AFFINE_LIN_COEFFS, SM4_INV_AFFINE_CONST,
                                   NULL, delta_conj);
 }
 
 static void sm4_norm_nibble_conjugates_key(bfSSS_t out[4], const bfSSS_t* nibble_key) {
   for (unsigned int j = 0; j != 4u; ++j) {
     bfSSS_t acc = nibble_key[0];
-    acc = bfSSS_add(acc, bfSSS_mul(g_sm4_coeff_conj_lut[SM4_NORM_BETA4_SQ[j]][0],
+    acc = bfSSS_add(acc, bfSSS_mul(sm4_coeff_conj(SM4_NORM_BETA4_SQ[j], 0),
                                    nibble_key[1]));
-    acc = bfSSS_add(acc, bfSSS_mul(g_sm4_coeff_conj_lut[SM4_NORM_BETA4_SQ[j + 1u]][0],
+    acc = bfSSS_add(acc, bfSSS_mul(sm4_coeff_conj(SM4_NORM_BETA4_SQ[j + 1u], 0),
                                    nibble_key[2]));
-    acc = bfSSS_add(acc, bfSSS_mul(g_sm4_coeff_conj_lut[SM4_NORM_BETA4_CUBE[j]][0],
+    acc = bfSSS_add(acc, bfSSS_mul(sm4_coeff_conj(SM4_NORM_BETA4_CUBE[j], 0),
                                    nibble_key[3]));
     out[j] = acc;
   }
 }
 
-static void sm4_norm_inv_from_norm_prover(sm4_norm_byte_expr_t* inv, bfSSS_t z_norm[3],
+static void sm4_norm_inv_from_norm_prover(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* inv, bfSSS_t z_norm[3],
                                           const sm4_norm_byte_expr_t* sbox_input,
                                           uint8_t norm_nibble,
                                           const bfSSS_t* norm_bits) {
@@ -602,7 +642,7 @@ static void sm4_norm_inv_from_norm_prover(sm4_norm_byte_expr_t* inv, bfSSS_t z_n
   bfSSS_t h_val[4];
   bfSSS_t h[4];
 
-  sm4_norm_byte_affine_prover(&x, sbox_input);
+  sm4_norm_byte_affine_prover(ctx, &x, sbox_input);
   sm4_norm_nibble_conjugates_key(h, norm_bits);
   for (unsigned int j = 0u; j != 4u; ++j) {
     h_val[j] = sm4_byte_combine_bits_lut(sm4_norm_nibble_conjugate_byte(norm_nibble, j));
@@ -635,7 +675,8 @@ static void sm4_norm_inv_from_norm_prover(sm4_norm_byte_expr_t* inv, bfSSS_t z_n
   }
 }
 
-static void sm4_norm_inv_from_norm_verifier(sm4_norm_byte_expr_t* inv, bfSSS_t* z_norm,
+static void sm4_norm_inv_from_norm_verifier(const sm4_call_context_t* ctx,
+    sm4_norm_byte_expr_t* inv, bfSSS_t* z_norm,
                                             const sm4_norm_byte_expr_t* sbox_input,
                                             const bfSSS_t* norm_key,
                                             bfSSS_t delta_sq,
@@ -643,7 +684,7 @@ static void sm4_norm_inv_from_norm_verifier(sm4_norm_byte_expr_t* inv, bfSSS_t* 
   sm4_norm_byte_expr_t x;
   bfSSS_t h[4];
 
-  sm4_norm_byte_affine_verifier(&x, sbox_input, delta_conj);
+  sm4_norm_byte_affine_verifier(ctx, &x, sbox_input, delta_conj);
   sm4_norm_nibble_conjugates_key(h, norm_key);
 
   *z_norm = bfSSS_add(bfSSS_mul(bfSSS_mul(h[0], x.conj[4]), x.conj[1]),
@@ -658,7 +699,8 @@ static void sm4_norm_inv_from_norm_verifier(sm4_norm_byte_expr_t* inv, bfSSS_t* 
   }
 }
 
-static void sm4_norm_word_map(sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* in,
+static void sm4_norm_word_map(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* in,
                               const uint8_t coeffs[4][4][8], uint32_t (*word_map)(uint32_t)) {
   const uint32_t mapped = word_map(sm4_load_be_u32((const uint8_t[4]){
       in->byte[0].value, in->byte[1].value, in->byte[2].value, in->byte[3].value}));
@@ -668,7 +710,7 @@ static void sm4_norm_word_map(sm4_norm_word_expr_t* out, const sm4_norm_word_exp
 	    out->byte[ob].value = mapped_bytes[ob];
 	    out->byte[ob].degree = in->byte[0].degree;
 	    for (unsigned int s = 0; s != 8u; ++s) {
-        if (g_sm4_norm_verifier_mode) {
+        if (ctx->verifier_mode) {
           out->byte[ob].conj[s] = sm4_word_coeff_linear_comb_degree(coeffs[ob], s, in, 0u);
           out->byte[ob].lin[s] = bfSSS_zero();
           out->byte[ob].quad[s] = bfSSS_zero();
@@ -691,7 +733,8 @@ static void sm4_norm_word_map(sm4_norm_word_expr_t* out, const sm4_norm_word_exp
 	  }
 	}
 
-static void sm4_norm_word_map_after_affine(sm4_norm_word_expr_t* out,
+static void sm4_norm_word_map_after_affine(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out,
                                            const sm4_norm_word_expr_t* in,
                                            const uint8_t coeffs[4][4][8],
                                            const uint8_t constants[4],
@@ -706,10 +749,10 @@ static void sm4_norm_word_map_after_affine(sm4_norm_word_expr_t* out,
     out->byte[ob].value = mapped_bytes[ob];
     out->byte[ob].degree = in->byte[0].degree;
     for (unsigned int s = 0; s != 8u; ++s) {
-      if (g_sm4_norm_verifier_mode) {
+      if (ctx->verifier_mode) {
         bfSSS_t acc = sm4_word_coeff_linear_comb_degree(coeffs[ob], s, in, 0u);
         acc = bfSSS_add(acc,
-                        bfSSS_mul(sm4_norm_delta_pow(out->byte[ob].degree),
+                        bfSSS_mul(sm4_norm_delta_pow(ctx, out->byte[ob].degree),
                                   sm4_byte_combine_bits_lut(
                                       sm4_bf8_square_n(constants[ob], s))));
         out->byte[ob].conj[s] = acc;
@@ -755,13 +798,15 @@ static uint32_t sm4_word_map_lprime_inv(uint32_t x) {
   return SM4_L_prime_inv(x);
 }
 
-static void sm4_norm_word_Linv(sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* in) {
-  sm4_norm_word_map(out, in, SM4_WORDMAP_LINV, sm4_word_map_linv);
+static void sm4_norm_word_Linv(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* in) {
+  sm4_norm_word_map(ctx, out, in, SM4_WORDMAP_LINV, sm4_word_map_linv);
 }
 
-static void sm4_norm_word_Lprime_inv(sm4_norm_word_expr_t* out,
+static void sm4_norm_word_Lprime_inv(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out,
                                      const sm4_norm_word_expr_t* in) {
-  sm4_norm_word_map(out, in, SM4_WORDMAP_LPINV, sm4_word_map_lprime_inv);
+  sm4_norm_word_map(ctx, out, in, SM4_WORDMAP_LPINV, sm4_word_map_lprime_inv);
 }
 
 // OWF PROVER
@@ -773,7 +818,8 @@ void sm4_128_prover(const params_t* params, uint8_t* a0_tilde, uint8_t* a1_tilde
   // clang-format on
   // const unsigned int ell = 1280;
   const unsigned int ell = params->ell;
-  g_sm4_norm_verifier_mode = 0;
+  const sm4_call_context_t call = {bfSSS_zero(), bfSSS_zero(), 0};
+  const sm4_call_context_t* ctx = &call;
 
   // ::1-5
   // V becomes the w_tag: ell + 2 * lambda field elements
@@ -800,7 +846,7 @@ void sm4_128_prover(const params_t* params, uint8_t* a0_tilde, uint8_t* a1_tilde
   zk_hash_SSS_3_init(&hasher, chall_2);
   sm4_byte_combine_bits_lut_ensure();
 
-  sm4_SSS_constraints_prover(params, &hasher, w, w_tag, owf_in, owf_out);
+  sm4_SSS_constraints_prover(ctx, params, &hasher, w, w_tag, owf_in, owf_out);
 
   // TAG: update to a0_tilde, a1_tilde, but it should still work as before due to the compatility of Deg2To3.
   zk_hash_SSS_3_finalize(a0_tilde, a1_tilde, a2_tilde, &hasher, bf_v_star_0,
@@ -817,7 +863,8 @@ void sm4_128_prover(const params_t* params, uint8_t* a0_tilde, uint8_t* a1_tilde
 // for em, w[0..31*4 - 1 = 127]; owf_input is sk_input, is SM4 key
 // owf_key is sk_key, is SM4 input
 // owf_output is SM4 output xor SM4 input
-static void sm4_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx* hasher,
+static void sm4_SSS_constraints_prover(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_3_ctx* hasher,
                                        const uint8_t* w, const bfSSS_t* w_tag,
                                        const uint8_t* owf_in, const uint8_t* owf_out) {
   // const unsigned int lambda    = params->lambda;
@@ -825,13 +872,12 @@ static void sm4_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx
   const unsigned int blocksize = SM4_BLOCK_SIZE * 8; // in bits
   const bool use_em     = is_em(params);
 
-  // ::4-5
-  // constraint: w[0] * w[1] = 0; 
-  // zk_hash input: (z0 = v0 * v1, z1 = w[0] * v1 + w[1] * v0, z2 = 0)
-  zk_hash_SSS_3_update(hasher, bfSSS_mul(w_tag[0], w_tag[1]),
-                       bfSSS_add(bfSSS_mul_bit(w_tag[0], ptr_get_bit(w, 1)),
-                                 bfSSS_mul_bit(w_tag[1], ptr_get_bit(w, 0))),
-                       bfSSS_zero());
+  /* Undo FK's first two bits and lift the raw-key product by X. */
+  const unsigned int k0 = ptr_get_bit(w, 0) ^ 1u;
+  const unsigned int k1 = ptr_get_bit(w, 1) ^ 1u;
+  zk_hash_SSS_3_update(hasher, bfSSS_zero(), bfSSS_mul(w_tag[0], w_tag[1]),
+                       bfSSS_add(bfSSS_mul_bit(w_tag[0], k1),
+                                 bfSSS_mul_bit(w_tag[1], k0)));
 
   // ::6
   uint8_t in[SM4_BLOCK_SIZE];
@@ -862,7 +908,7 @@ static void sm4_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx
     // ::18-19
     // Round-key expressions are public in EM mode; only encryption constraints
     // are appended to the hasher here.
-    sm4_SSS_enc_constraints_prover(params, hasher, 
+    sm4_SSS_enc_constraints_prover(ctx, params, hasher,
                       // X[0..3], X[35], X[34], X[33], X[32]
                       in, in_tag, out, out_tag, 
                       // X[3],...,X[32], 1152 / 8 = 144
@@ -887,8 +933,8 @@ static void sm4_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx
      * schedule pass in the fast parameter set.
      */
     sm4_norm_word_expr_t K[36];
-    sm4_norm_build_key_words_prover(w, w_tag, K, hasher);
-    sm4_norm_build_enc_words_prover(in, in_tag, out, out_tag, w + Lke / 8,
+    sm4_norm_build_key_words_prover(ctx, w, w_tag, K, hasher);
+    sm4_norm_build_enc_words_prover(ctx, in, in_tag, out, out_tag, w + Lke / 8,
                                     w_tag + Lke, K, hasher);
   }
 
@@ -933,16 +979,17 @@ static void sm4_norm_public_u32_verifier(sm4_norm_word_expr_t* out, uint32_t val
   sm4_norm_word_public_verifier(out, bytes, delta);
 }
 
-static void sm4_norm_word_add4(sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* a,
+static void sm4_norm_word_add4(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out, const sm4_norm_word_expr_t* a,
                                const sm4_norm_word_expr_t* b,
                                const sm4_norm_word_expr_t* c,
                                const sm4_norm_word_expr_t* d) {
   for (unsigned int i = 0u; i != 4u; ++i) {
     sm4_norm_byte_expr_t ab;
     sm4_norm_byte_expr_t cd;
-    sm4_norm_byte_add(&ab, &a->byte[i], &b->byte[i]);
-    sm4_norm_byte_add(&cd, &c->byte[i], &d->byte[i]);
-    sm4_norm_byte_add(&out->byte[i], &ab, &cd);
+    sm4_norm_byte_add(ctx, &ab, &a->byte[i], &b->byte[i]);
+    sm4_norm_byte_add(ctx, &cd, &c->byte[i], &d->byte[i]);
+    sm4_norm_byte_add(ctx, &out->byte[i], &ab, &cd);
   }
 }
 
@@ -979,27 +1026,41 @@ static void sm4_norm_append_io_prover(zk_hash_SSS_3_ctx* hasher,
     }
   }
 
-  zk_hash_SSS_3_update(hasher, row0[0], row0[1], row0[2]);
-  zk_hash_SSS_3_update(hasher, row1[0], row1[1], row1[2]);
+  /* Lift degree-two IO constraints (last two SM4 words) by X. */
+  if (x->degree + y->degree == 2u) {
+    zk_hash_SSS_3_update(hasher, bfSSS_zero(), row0[0], row0[1]);
+    zk_hash_SSS_3_update(hasher, bfSSS_zero(), row1[0], row1[1]);
+  } else {
+    zk_hash_SSS_3_update(hasher, row0[0], row0[1], row0[2]);
+    zk_hash_SSS_3_update(hasher, row1[0], row1[1], row1[2]);
+  }
 }
 
-static void sm4_norm_append_io_verifier(zk_hash_SSS_ctx* hasher,
+static void sm4_norm_append_io_verifier(const sm4_call_context_t* ctx,
+    zk_hash_SSS_ctx* hasher,
                                         const sm4_norm_byte_expr_t* x,
                                         const sm4_norm_byte_expr_t* y,
                                         bfSSS_t delta, bfSSS_t delta_sq) {
   (void)delta;
   (void)delta_sq;
   const bfSSS_t row0 =
-      bfSSS_add(bfSSS_mul(sm4_norm_delta_pow(y->degree), x->conj[0]),
+      bfSSS_add(bfSSS_mul(sm4_norm_delta_pow(ctx, y->degree), x->conj[0]),
                 bfSSS_mul(x->conj[1], y->conj[0]));
   const bfSSS_t row1 =
-      bfSSS_add(bfSSS_mul(sm4_norm_delta_pow(x->degree), y->conj[0]),
+      bfSSS_add(bfSSS_mul(sm4_norm_delta_pow(ctx, x->degree), y->conj[0]),
                 bfSSS_mul(x->conj[0], y->conj[1]));
-  zk_hash_SSS_update(hasher, row0);
-  zk_hash_SSS_update(hasher, row1);
+  /* Evaluate the same X lift on degree-two verifier constraints. */
+  if (x->degree + y->degree == 2u) {
+    zk_hash_SSS_update(hasher, bfSSS_mul(delta, row0));
+    zk_hash_SSS_update(hasher, bfSSS_mul(delta, row1));
+  } else {
+    zk_hash_SSS_update(hasher, row0);
+    zk_hash_SSS_update(hasher, row1);
+  }
 }
 
-static void sm4_norm_anchor_t_word_prover(sm4_norm_word_expr_t* out,
+static void sm4_norm_anchor_t_word_prover(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out,
                                           zk_hash_SSS_3_ctx* hasher,
                                           const sm4_norm_word_expr_t* in,
                                           const uint8_t* norm_packed,
@@ -1013,16 +1074,17 @@ static void sm4_norm_anchor_t_word_prover(sm4_norm_word_expr_t* out,
     bfSSS_t z_norm[3];
     const unsigned int nibble_idx = anchor * 4u + j;
     const uint8_t nibble = sm4_unpack_norm_nibble(norm_packed, nibble_idx);
-    sm4_norm_inv_from_norm_prover(&inv_word.byte[j], z_norm, &in->byte[j], nibble,
+    sm4_norm_inv_from_norm_prover(ctx, &inv_word.byte[j], z_norm, &in->byte[j], nibble,
                                   norm_tag + nibble_idx * 4u);
     if (hasher) {
       zk_hash_SSS_3_update(hasher, z_norm[0], z_norm[1], z_norm[2]);
     }
   }
-  sm4_norm_word_map_after_affine(out, &inv_word, coeffs, constants, word_map);
+  sm4_norm_word_map_after_affine(ctx, out, &inv_word, coeffs, constants, word_map);
 }
 
-static void sm4_norm_anchor_t_word_verifier(sm4_norm_word_expr_t* out,
+static void sm4_norm_anchor_t_word_verifier(const sm4_call_context_t* ctx,
+    sm4_norm_word_expr_t* out,
                                             zk_hash_SSS_ctx* hasher,
                                             const sm4_norm_word_expr_t* in,
                                             const bfSSS_t* norm_key,
@@ -1036,16 +1098,17 @@ static void sm4_norm_anchor_t_word_verifier(sm4_norm_word_expr_t* out,
   for (unsigned int j = 0u; j != 4u; ++j) {
     bfSSS_t z_norm;
     const unsigned int nibble_idx = anchor * 4u + j;
-    sm4_norm_inv_from_norm_verifier(&inv_word.byte[j], &z_norm, &in->byte[j],
+    sm4_norm_inv_from_norm_verifier(ctx, &inv_word.byte[j], &z_norm, &in->byte[j],
                                     norm_key + nibble_idx * 4u, delta_sq, delta_conj);
     if (hasher) {
       zk_hash_SSS_update(hasher, z_norm);
     }
   }
-  sm4_norm_word_map_after_affine(out, &inv_word, coeffs, constants, word_map);
+  sm4_norm_word_map_after_affine(ctx, out, &inv_word, coeffs, constants, word_map);
 }
 
-static void sm4_norm_build_key_words_prover(const uint8_t* w, const bfSSS_t* w_tag,
+static void sm4_norm_build_key_words_prover(const sm4_call_context_t* ctx,
+    const uint8_t* w, const bfSSS_t* w_tag,
                                             sm4_norm_word_expr_t K[36],
                                             zk_hash_SSS_3_ctx* hasher) {
   for (unsigned int word = 0u; word != 4u; ++word) {
@@ -1060,30 +1123,30 @@ static void sm4_norm_build_key_words_prover(const uint8_t* w, const bfSSS_t* w_t
     sm4_norm_word_expr_t t_word;
 
     sm4_norm_public_u32_prover(&ck, CK[round]);
-    sm4_norm_word_add4(&sbox_in, &K[round + 1u], &K[round + 2u],
+    sm4_norm_word_add4(ctx, &sbox_in, &K[round + 1u], &K[round + 2u],
                        &K[round + 3u], &ck);
 
     if (sm4_norm_is_key_anchor(word)) {
       const unsigned int anchor = (word - 4u) >> 2u;
-      sm4_norm_anchor_t_word_prover(&t_word, hasher, &sbox_in, w + 16u,
+      sm4_norm_anchor_t_word_prover(ctx, &t_word, hasher, &sbox_in, w + 16u,
                                     w_tag + 16u * 8u, anchor,
                                     SM4_WORDMAP_LP_AFTER_AFFINE,
                                     SM4_WORDMAP_LP_AFTER_AFFINE_CONST,
                                     sm4_word_map_lprime);
-      sm4_norm_word_add(&K[word], &K[round], &t_word);
+      sm4_norm_word_add(ctx, &K[word], &K[round], &t_word);
     } else {
       const unsigned int off = sm4_norm_key_full_byte_offset(word);
       sm4_norm_word_expr_t diff;
       sm4_norm_word_expr_t y_pre;
       sm4_norm_word_from_bits(&K[word], w + off, w_tag + off * 8u);
       if (hasher) {
-        sm4_norm_word_add(&diff, &K[round], &K[word]);
-        sm4_norm_word_Lprime_inv(&y_pre, &diff);
+        sm4_norm_word_add(ctx, &diff, &K[round], &K[word]);
+        sm4_norm_word_Lprime_inv(ctx, &y_pre, &diff);
         for (unsigned int j = 0u; j != 4u; ++j) {
           sm4_norm_byte_expr_t x;
           sm4_norm_byte_expr_t y;
-          sm4_norm_byte_affine2_prover(&x, &sbox_in.byte[j]);
-          sm4_norm_byte_inv_affine2_prover(&y, &y_pre.byte[j]);
+          sm4_norm_byte_affine2_prover(ctx, &x, &sbox_in.byte[j]);
+          sm4_norm_byte_inv_affine2_prover(ctx, &y, &y_pre.byte[j]);
           sm4_norm_append_io_prover(hasher, &x, &y);
         }
       }
@@ -1091,7 +1154,8 @@ static void sm4_norm_build_key_words_prover(const uint8_t* w, const bfSSS_t* w_t
   }
 }
 
-static void sm4_norm_build_key_words_verifier(const bfSSS_t* w_key,
+static void sm4_norm_build_key_words_verifier(const sm4_call_context_t* ctx,
+    const bfSSS_t* w_key,
                                               sm4_norm_word_expr_t K[36],
                                               zk_hash_SSS_ctx* hasher,
                                               bfSSS_t delta,
@@ -1110,38 +1174,39 @@ static void sm4_norm_build_key_words_verifier(const bfSSS_t* w_key,
     sm4_norm_word_expr_t t_word;
 
     sm4_norm_public_u32_verifier(&ck, CK[round], delta);
-    sm4_norm_word_add4(&sbox_in, &K[round + 1u], &K[round + 2u],
+    sm4_norm_word_add4(ctx, &sbox_in, &K[round + 1u], &K[round + 2u],
                        &K[round + 3u], &ck);
 
     if (sm4_norm_is_key_anchor(word)) {
       const unsigned int anchor = (word - 4u) >> 2u;
-      sm4_norm_anchor_t_word_verifier(&t_word, hasher, &sbox_in,
+      sm4_norm_anchor_t_word_verifier(ctx, &t_word, hasher, &sbox_in,
                                       w_key + 16u * 8u, anchor, delta_sq, delta_conj,
                                       SM4_WORDMAP_LP_AFTER_AFFINE,
                                       SM4_WORDMAP_LP_AFTER_AFFINE_CONST,
                                       sm4_word_map_lprime);
-      sm4_norm_word_add(&K[word], &K[round], &t_word);
+      sm4_norm_word_add(ctx, &K[word], &K[round], &t_word);
     } else {
       const unsigned int off = sm4_norm_key_full_byte_offset(word);
       sm4_norm_word_expr_t diff;
       sm4_norm_word_expr_t y_pre;
       sm4_norm_word_from_key(&K[word], w_key + off * 8u);
       if (hasher) {
-        sm4_norm_word_add(&diff, &K[round], &K[word]);
-        sm4_norm_word_Lprime_inv(&y_pre, &diff);
+        sm4_norm_word_add(ctx, &diff, &K[round], &K[word]);
+        sm4_norm_word_Lprime_inv(ctx, &y_pre, &diff);
         for (unsigned int j = 0u; j != 4u; ++j) {
           sm4_norm_byte_expr_t x;
           sm4_norm_byte_expr_t y;
-          sm4_norm_byte_affine2_verifier(&x, &sbox_in.byte[j], delta_conj);
-          sm4_norm_byte_inv_affine2_verifier(&y, &y_pre.byte[j], delta_conj);
-          sm4_norm_append_io_verifier(hasher, &x, &y, delta, delta_sq);
+          sm4_norm_byte_affine2_verifier(ctx, &x, &sbox_in.byte[j], delta_conj);
+          sm4_norm_byte_inv_affine2_verifier(ctx, &y, &y_pre.byte[j], delta_conj);
+          sm4_norm_append_io_verifier(ctx, hasher, &x, &y, delta, delta_sq);
         }
       }
     }
   }
 }
 
-static void sm4_norm_build_enc_words_prover(const uint8_t* in, const bfSSS_t* in_tag,
+static void sm4_norm_build_enc_words_prover(const sm4_call_context_t* ctx,
+    const uint8_t* in, const bfSSS_t* in_tag,
                                             const uint8_t* out, const bfSSS_t* out_tag,
                                             const uint8_t* w, const bfSSS_t* w_tag,
                                             const sm4_norm_word_expr_t K[36],
@@ -1163,16 +1228,16 @@ static void sm4_norm_build_enc_words_prover(const uint8_t* in, const bfSSS_t* in
     sm4_norm_word_expr_t sbox_in;
     sm4_norm_word_expr_t t_word;
 
-    sm4_norm_word_add4(&sbox_in, &X[round + 1u], &X[round + 2u],
+    sm4_norm_word_add4(ctx, &sbox_in, &X[round + 1u], &X[round + 2u],
                        &X[round + 3u], &K[round + 4u]);
 
     if (sm4_norm_is_enc_anchor(word)) {
       const unsigned int anchor = (word - 5u) >> 2u;
-      sm4_norm_anchor_t_word_prover(&t_word, hasher, &sbox_in, w, w_tag, anchor,
+      sm4_norm_anchor_t_word_prover(ctx, &t_word, hasher, &sbox_in, w, w_tag, anchor,
                                     SM4_WORDMAP_L_AFTER_AFFINE,
                                     SM4_WORDMAP_L_AFTER_AFFINE_CONST,
                                     sm4_word_map_l);
-      sm4_norm_word_add(&X[word], &X[round], &t_word);
+      sm4_norm_word_add(ctx, &X[word], &X[round], &t_word);
     } else {
       sm4_norm_word_expr_t diff;
       sm4_norm_word_expr_t y_pre;
@@ -1180,20 +1245,21 @@ static void sm4_norm_build_enc_words_prover(const uint8_t* in, const bfSSS_t* in
         const unsigned int off = sm4_norm_enc_full_byte_offset(word);
         sm4_norm_word_from_bits(&X[word], w + off, w_tag + off * 8u);
       }
-      sm4_norm_word_add(&diff, &X[round], &X[word]);
-      sm4_norm_word_Linv(&y_pre, &diff);
+      sm4_norm_word_add(ctx, &diff, &X[round], &X[word]);
+      sm4_norm_word_Linv(ctx, &y_pre, &diff);
       for (unsigned int j = 0u; j != 4u; ++j) {
         sm4_norm_byte_expr_t x;
         sm4_norm_byte_expr_t y;
-        sm4_norm_byte_affine2_prover(&x, &sbox_in.byte[j]);
-        sm4_norm_byte_inv_affine2_prover(&y, &y_pre.byte[j]);
+        sm4_norm_byte_affine2_prover(ctx, &x, &sbox_in.byte[j]);
+        sm4_norm_byte_inv_affine2_prover(ctx, &y, &y_pre.byte[j]);
         sm4_norm_append_io_prover(hasher, &x, &y);
       }
     }
   }
 }
 
-static void sm4_norm_build_enc_words_verifier(const bfSSS_t* in_key,
+static void sm4_norm_build_enc_words_verifier(const sm4_call_context_t* ctx,
+    const bfSSS_t* in_key,
                                               const bfSSS_t* out_key,
                                               const bfSSS_t* w_key,
                                               const sm4_norm_word_expr_t K[36],
@@ -1216,17 +1282,17 @@ static void sm4_norm_build_enc_words_verifier(const bfSSS_t* in_key,
     sm4_norm_word_expr_t sbox_in;
     sm4_norm_word_expr_t t_word;
 
-    sm4_norm_word_add4(&sbox_in, &X[round + 1u], &X[round + 2u],
+    sm4_norm_word_add4(ctx, &sbox_in, &X[round + 1u], &X[round + 2u],
                        &X[round + 3u], &K[round + 4u]);
 
     if (sm4_norm_is_enc_anchor(word)) {
       const unsigned int anchor = (word - 5u) >> 2u;
-      sm4_norm_anchor_t_word_verifier(&t_word, hasher, &sbox_in, w_key,
+      sm4_norm_anchor_t_word_verifier(ctx, &t_word, hasher, &sbox_in, w_key,
                                       anchor, delta_sq, delta_conj,
                                       SM4_WORDMAP_L_AFTER_AFFINE,
                                       SM4_WORDMAP_L_AFTER_AFFINE_CONST,
                                       sm4_word_map_l);
-      sm4_norm_word_add(&X[word], &X[round], &t_word);
+      sm4_norm_word_add(ctx, &X[word], &X[round], &t_word);
     } else {
       sm4_norm_word_expr_t diff;
       sm4_norm_word_expr_t y_pre;
@@ -1234,21 +1300,22 @@ static void sm4_norm_build_enc_words_verifier(const bfSSS_t* in_key,
         const unsigned int off = sm4_norm_enc_full_byte_offset(word);
         sm4_norm_word_from_key(&X[word], w_key + off * 8u);
       }
-      sm4_norm_word_add(&diff, &X[round], &X[word]);
-      sm4_norm_word_Linv(&y_pre, &diff);
+      sm4_norm_word_add(ctx, &diff, &X[round], &X[word]);
+      sm4_norm_word_Linv(ctx, &y_pre, &diff);
       for (unsigned int j = 0u; j != 4u; ++j) {
         sm4_norm_byte_expr_t x;
         sm4_norm_byte_expr_t y;
-        sm4_norm_byte_affine2_verifier(&x, &sbox_in.byte[j], delta_conj);
-        sm4_norm_byte_inv_affine2_verifier(&y, &y_pre.byte[j], delta_conj);
-        sm4_norm_append_io_verifier(hasher, &x, &y, delta, delta_sq);
+        sm4_norm_byte_affine2_verifier(ctx, &x, &sbox_in.byte[j], delta_conj);
+        sm4_norm_byte_inv_affine2_verifier(ctx, &y, &y_pre.byte[j], delta_conj);
+        sm4_norm_append_io_verifier(ctx, hasher, &x, &y, delta, delta_sq);
       }
     }
   }
 }
 
 // // Enc CSTRNTS
-static void sm4_SSS_enc_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx* hasher, 
+static void sm4_SSS_enc_constraints_prover(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_3_ctx* hasher,
                                               const uint8_t* in, const bfSSS_t* in_tag,
                                               const uint8_t* out, const bfSSS_t* out_tag,
                                               const uint8_t* w, const bfSSS_t* w_tag,
@@ -1259,8 +1326,8 @@ static void sm4_SSS_enc_constraints_prover(const params_t* params, zk_hash_SSS_3
   assert(!k_tag_is_zero);
 
   sm4_norm_word_expr_t K[36];
-  sm4_norm_build_key_words_prover(k - 16u, k_tag - 16u * 8u, K, NULL);
-  sm4_norm_build_enc_words_prover(in, in_tag, out, out_tag, w, w_tag, K, hasher);
+  sm4_norm_build_key_words_prover(ctx, k - 16u, k_tag - 16u * 8u, K, NULL);
+  sm4_norm_build_enc_words_prover(ctx, in, in_tag, out, out_tag, w, w_tag, K, hasher);
 }
 
 /* ================================================================ */
@@ -1282,9 +1349,8 @@ void sm4_128_verifier(const params_t* params, uint8_t* a0_tilde, const uint8_t* 
 
   // ::1
   bfSSS_t bf_delta    = bfSSS_load(chall_3);
-  g_sm4_norm_verifier_mode = 1;
-  g_sm4_current_delta = bf_delta;
-  g_sm4_current_delta_sq = bfSSS_sqr(bf_delta);
+  const sm4_call_context_t call = {bf_delta, bfSSS_sqr(bf_delta), 1};
+  const sm4_call_context_t* ctx = &call;
 
   // ::2-6
   bfSSS_t q_key[ell + 2 * SM4TH_LAMBDA];
@@ -1306,14 +1372,14 @@ void sm4_128_verifier(const params_t* params, uint8_t* a0_tilde, const uint8_t* 
   }
 
   // ::11-12
-  sm4_SSS_constraints_verifier(params, &b_ctx, q_key, owf_in, owf_out, bf_delta);
+  sm4_SSS_constraints_verifier(ctx, params, &b_ctx, q_key, owf_in, owf_out, bf_delta);
   // ::13-14
   uint8_t q_tilde[SM4TH_LAMBDA / 8];
   zk_hash_SSS_finalize(q_tilde, &b_ctx, q_star);
 
   // ::16
   bfSSS_t tmp1 = bfSSS_mul(bfSSS_load(a1_tilde), bf_delta);
-  bfSSS_t tmp2 = bfSSS_mul(bfSSS_load(a2_tilde), g_sm4_current_delta_sq);
+  bfSSS_t tmp2 = bfSSS_mul(bfSSS_load(a2_tilde), ctx->delta_sq);
   bfSSS_t ret  = bfSSS_add(bfSSS_add(bfSSS_load(q_tilde), tmp1), tmp2);
 
   bfSSS_store(a0_tilde, ret);
@@ -1321,7 +1387,8 @@ void sm4_128_verifier(const params_t* params, uint8_t* a0_tilde, const uint8_t* 
 
 // OWF CONSTRAINTS VERIFIER
 
-static void sm4_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx* hasher,
+static void sm4_SSS_constraints_verifier(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_ctx* hasher,
                                          const bfSSS_t* w_key, const uint8_t* owf_in,
                                          const uint8_t* owf_out, bfSSS_t delta) {
 
@@ -1329,10 +1396,10 @@ static void sm4_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx
   const unsigned int blocksize = SM4_BLOCK_SIZE * 8; // in bits
   const bool use_em     = is_em(params);
 
-  // ::4-5
-  // constraint: w[0] * w[1] = 0
-  // verifier (Deg2): q0 * q1
-  zk_hash_SSS_update(hasher, bfSSS_mul(w_key[0], w_key[1]));
+  /* Apply the same FK correction and degree lift to verifier keys. */
+  zk_hash_SSS_update(hasher,
+      bfSSS_mul(delta, bfSSS_mul(bfSSS_add(w_key[0], delta),
+                                 bfSSS_add(w_key[1], delta))));
 
   // ::6
   bfSSS_t in_key[SM4_BLOCK_SIZE * 8];
@@ -1358,7 +1425,7 @@ static void sm4_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx
     }
 
     // ::18-19 enc constraints only (no key expansion constraints in EM mode)
-    sm4_SSS_enc_constraints_verifier(params, hasher,
+    sm4_SSS_enc_constraints_verifier(ctx, params, hasher,
                                      in_key, out_key,
                                      w_key + blocksize,               // X[4..31] keys
                                      expand_keys_key + blocksize,     // K[4..35] keys (public)
@@ -1379,15 +1446,16 @@ static void sm4_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx
     bfSSS_t delta_conj[8];
     sm4_norm_word_expr_t K[36];
     sm4_norm_delta_conjugates(delta_conj, delta);
-    sm4_norm_build_key_words_verifier(w_key, K, hasher, delta, delta_conj);
-    sm4_norm_build_enc_words_verifier(in_key, out_key, w_key + Lke, K, hasher,
+    sm4_norm_build_key_words_verifier(ctx, w_key, K, hasher, delta, delta_conj);
+    sm4_norm_build_enc_words_verifier(ctx, in_key, out_key, w_key + Lke, K, hasher,
                                       delta, delta_conj);
   }
 
 }
 
 	// // Enc CSTRNTS VERIFIER
-	static void sm4_SSS_enc_constraints_verifier(const params_t* params, zk_hash_SSS_ctx* hasher,
+	static void sm4_SSS_enc_constraints_verifier(const sm4_call_context_t* ctx,
+    const params_t* params, zk_hash_SSS_ctx* hasher,
                                              const bfSSS_t* in_key, const bfSSS_t* out_key,
                                              const bfSSS_t* w_key, const bfSSS_t* k_key,
                                              const bfSSS_t delta) {
@@ -1395,8 +1463,8 @@ static void sm4_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx
   bfSSS_t delta_conj[8];
   sm4_norm_word_expr_t K[36];
   sm4_norm_delta_conjugates(delta_conj, delta);
-  sm4_norm_build_key_words_verifier(k_key - 16u * 8u, K, NULL, delta, delta_conj);
-  sm4_norm_build_enc_words_verifier(in_key, out_key, w_key, K, hasher, delta, delta_conj);
+  sm4_norm_build_key_words_verifier(ctx, k_key - 16u * 8u, K, NULL, delta, delta_conj);
+  sm4_norm_build_enc_words_verifier(ctx, in_key, out_key, w_key, K, hasher, delta, delta_conj);
 }
 
 // COLOUM TO ROW MAJOR

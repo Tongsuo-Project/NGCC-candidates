@@ -1,3 +1,4 @@
+/* Remove unused internal helpers; public scheme and test entrypoints are retained. */
 #ifndef SM4_H
 #define SM4_H
 
@@ -22,10 +23,8 @@ void SM4_encrypt_store_state(const uint8_t *in, uint8_t *out, const SM4_KEY *ks,
 #define SM4TH_ENABLE_SM4_ACCE 0
 #endif
 
-/* Practical acceleration mode switch:
- * 0: fully disabled (scalar only)
- * 1: x86 SM4NI-4 backend + avx2 ecb kernels if supported
- */
+/* SM4TH_ENABLE_SM4_ACCE controls AES simulation only;
+ * native SM4 is independently compiled and selected after runtime detection. */
 
 enum {
     SM4_ACCE_IMPL_SCALAR = 0,
@@ -33,13 +32,62 @@ enum {
     SM4_ACCE_IMPL_X86_YUCHEN_FAST = 2,
     SM4_ACCE_IMPL_X86_YUCHEN_FAST_ICE16 = 3,
     SM4_ACCE_IMPL_X86_HYGON_CIS = 4,
+    SM4_ACCE_IMPL_X86_NATIVE_SM4 = 5, /* Intel VSM4 instructions. */
 };
+
+/* Build native SM4 only when the compiler provides its intrinsics. */
+#ifndef SM4TH_ENABLE_INTEL_SM4
+#define SM4TH_ENABLE_INTEL_SM4 0
+#endif
+#if SM4TH_ENABLE_INTEL_SM4 && defined(__x86_64__)
+#if defined(__clang__)
+#if __has_include(<sm4intrin.h>)
+#define SM4TH_NATIVE_SM4_COMPILED 1
+#endif
+#elif defined(__GNUC__) && (__GNUC__ >= 14)
+#define SM4TH_NATIVE_SM4_COMPILED 1
+#endif
+#endif
+#ifndef SM4TH_NATIVE_SM4_COMPILED
+#define SM4TH_NATIVE_SM4_COMPILED 0
+#endif
+int intel_sm4_ni_supported(void);
+#if SM4TH_NATIVE_SM4_COMPILED
+#define INTEL_SM4_RK_WORDS 32
+#define INTEL_SM4_RK_GROUPS 8
+
+typedef struct {
+  uint32_t pair01[INTEL_SM4_RK_GROUPS][8];
+  uint32_t pair23[INTEL_SM4_RK_GROUPS][8];
+} intel_sm4_ni_rk4_packed;
+
+void intel_sm4_ni_expand_key1(const uint8_t key[16], uint32_t rk[32]);
+void intel_sm4_ni_encrypt1(const uint32_t rk[32],
+                           const uint8_t in[16], uint8_t out[16]);
+void intel_sm4_ni_encrypt2_same_key(const uint32_t rk[32],
+                                    const uint8_t in[2][16], uint8_t out[2][16]);
+void intel_sm4_ni_expand_key4(const uint8_t* keys, unsigned long key_stride,
+                              uint32_t rk[4][32]);
+void intel_sm4_ni_expand_key4_packed(const uint8_t* keys, unsigned long key_stride,
+                                     intel_sm4_ni_rk4_packed* rk);
+void intel_sm4_ni_encrypt4_keys_2blocks_packed(
+    const intel_sm4_ni_rk4_packed* rk, const uint8_t in[2][16],
+    uint8_t* out0, uint8_t* out1, uint8_t* out2, uint8_t* out3);
+void intel_sm4_ni_encrypt4_keys_6blocks_packed(
+    const intel_sm4_ni_rk4_packed* rk, const uint8_t in[6][16],
+    uint8_t* out0, uint8_t* out1, uint8_t* out2, uint8_t* out3);
+#endif
 
 int SM4_set_key_acce(const uint8_t* key, SM4_KEY* ks, unsigned int* impl);
 int SM4_encrypt_acce(const uint8_t* in, uint8_t* out, const SM4_KEY* ks, size_t blocks);
 
 /* SM4 S-box computation (used internally by encryption) */
 uint8_t sm4_compute_sbox(uint8_t in);
+/* Internal ISA entry; callers must first check AVX2 plus AVX-512 F/VL/BW. */
+#if (defined(__x86_64__) || defined(__i386__)) && (defined(__GNUC__) || defined(__clang__))
+__attribute__((target("avx2,avx512f,avx512vl,avx512bw")))
+uint8_t sm4_compute_sbox_avx512(uint8_t in);
+#endif
 
 /* Optional PRG ECB wrapper type and functions (generic SM4-ECB)
  * These provide a uniform interface for SM4-ECB wrappers
@@ -115,10 +163,7 @@ static inline uint32_t SM4_L_inv(uint32_t C)
 }
 
 /* SM4 inverse of linear transformation L for 4 input/output bytes */
-static inline void SM4_L_inv_bytes(const uint8_t in[4], uint8_t out[4])
-{
-    sm4_store_be_u32(SM4_L_inv(sm4_load_be_u32(in)), out);
-}
+
 
 /* SM4 linear transformation L_prime used in encryption rounds */
 static inline uint32_t SM4_L_prime(uint32_t B)
@@ -136,10 +181,7 @@ static inline uint32_t SM4_L_prime_inv(uint32_t C)
 }
 
 /* SM4 inverse of linear transformation L_prime for 4 input/output bytes */
-static inline void SM4_L_prime_inv_bytes(const uint8_t in[4], uint8_t out[4])
-{
-    sm4_store_be_u32(SM4_L_prime_inv(sm4_load_be_u32(in)), out);
-}
+
 
 /* ================================================================== *
  *  SM4 Affine Transformation Functions and Constants                 *

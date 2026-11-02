@@ -1,3 +1,4 @@
+/* Retain only the PRG wrappers called by this instance and its ISA paths. */
 /*
  * SPDX-License-Identifier: MIT
  *
@@ -103,22 +104,6 @@ void prg_2_lambda_independent_batch(const uint8_t* keys, size_t key_stride, cons
   }
 }
 
-void prg_2_lambda_fixed_tweak_independent_batch_with_sd(const uint8_t* keys, size_t key_stride,
-                                                        const uint8_t* iv, uint32_t tweak,
-                                                        uint8_t* sd_out, size_t sd_stride,
-                                                        uint8_t* out, size_t out_stride,
-                                                        unsigned int seclvl, size_t count) {
-  const size_t key_bytes = (size_t)(seclvl / 8u);
-  const size_t outlen = 2u * key_bytes;
-  size_t i = 0;
-
-  for (; i < count; ++i) {
-    const uint8_t* key_i = keys + i * key_stride;
-    memcpy(sd_out + i * sd_stride, key_i, key_bytes);
-    prg(key_i, iv, tweak, out + i * out_stride, seclvl, outlen);
-  }
-}
-
 void prg_2_lambda_and_fixed_tweak_independent_batch_with_sd(
     const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
     uint32_t tweak_long, uint8_t* sd_out, size_t sd_stride, uint8_t* out_2lambda,
@@ -139,22 +124,6 @@ void prg_2_lambda_and_fixed_tweak_independent_batch_with_sd(
 static inline uint8_t* prg_sd_xor_map_slot(uint8_t* sd_out, size_t sd_stride, size_t index,
                                            size_t xor_mask) {
   return sd_out + ((index ^ xor_mask) * sd_stride);
-}
-
-void prg_2_lambda_fixed_tweak_independent_batch_with_sd_xor_map(
-    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak, uint8_t* sd_out,
-    size_t sd_stride, size_t sd_index_base, size_t sd_index_xor, uint8_t* out, size_t out_stride,
-    unsigned int seclvl, size_t count) {
-  const size_t key_bytes = (size_t)(seclvl / 8u);
-  const size_t outlen = 2u * key_bytes;
-  size_t i = 0;
-
-  for (; i < count; ++i) {
-    const uint8_t* key_i = keys + i * key_stride;
-    uint8_t* sd_slot = prg_sd_xor_map_slot(sd_out, sd_stride, sd_index_base + i, sd_index_xor);
-    memcpy(sd_slot, key_i, key_bytes);
-    prg(key_i, iv, tweak, out + i * out_stride, seclvl, outlen);
-  }
 }
 
 void prg_2_lambda_and_fixed_tweak_independent_batch_with_sd_xor_map(
@@ -186,8 +155,3 @@ void prg_fixed_tweak_independent_batch(const uint8_t* keys, size_t key_stride, c
   }
 }
 
-void prg_4_lambda(const uint8_t* key, const uint8_t* iv, uint32_t tweak, uint8_t* out,
-                  unsigned int seclvl) {
-  const size_t outlen = 4u * (size_t)(seclvl / 8u);
-  prg(key, iv, tweak, out, seclvl, outlen);
-}

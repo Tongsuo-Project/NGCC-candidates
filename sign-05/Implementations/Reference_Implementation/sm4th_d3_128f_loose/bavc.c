@@ -17,7 +17,7 @@
 /*
  * Portable H1 batch finalize helper.
  * It preserves the 4-lane scheduling structure while using auxfunc.c hash
- * entry points (sm3hash/pseudohash/pseudoXOF).
+ * entry points supplied by the submission API.
  */
 static int h1_finalize_batch4_same_len_portable(unsigned int lambda_bytes,
                                                 const uint8_t* const msg[4], size_t msg_len,
@@ -218,7 +218,12 @@ typedef struct {
   size_t em_com_batch_cap;
 } bavc_scratch_cache_t;
 
-static bavc_scratch_cache_t g_bavc_scratch = {0};
+/* The reconstruction wrapper owns every mutable scratch buffer. */
+static void bavc_scratch_clear(bavc_scratch_cache_t* scratch) {
+  free(scratch->on_path);
+  free(scratch->em_keys);
+  free(scratch->em_com_batch);
+}
 
 static bool bavc_mul_size(size_t a, size_t b, size_t* out) {
   if (a != 0 && b > SIZE_MAX / a) {
@@ -241,15 +246,17 @@ static bool bavc_cache_reserve(uint8_t** buf, size_t* cap, size_t need) {
   return true;
 }
 
-static bool bavc_on_path_scratch_get(size_t need, uint8_t** out) {
-  if (!bavc_cache_reserve(&g_bavc_scratch.on_path, &g_bavc_scratch.on_path_cap, need)) {
+static bool bavc_on_path_scratch_get(bavc_scratch_cache_t* scratch,
+    size_t need, uint8_t** out) {
+  if (!bavc_cache_reserve(&scratch->on_path, &scratch->on_path_cap, need)) {
     return false;
   }
-  *out = g_bavc_scratch.on_path;
+  *out = scratch->on_path;
   return true;
 }
 
-static bool bavc_reconstruct_em_scratch_get(const params_t* params, unsigned int max_instances,
+static bool bavc_reconstruct_em_scratch_get(bavc_scratch_cache_t* scratch,
+    const params_t* params, unsigned int max_instances,
                                             unsigned int com_size, uint8_t** keys,
                                             uint8_t** com_batch, size_t* com_lane_stride) {
   if (params->L == 0) {
@@ -259,22 +266,22 @@ static bool bavc_reconstruct_em_scratch_get(const params_t* params, unsigned int
   const size_t node_count = (size_t)2u * params->L - 1u;
   size_t keys_need = 0;
   if (!bavc_mul_size(node_count, params->lambda_bytes, &keys_need) ||
-      !bavc_cache_reserve(&g_bavc_scratch.em_keys, &g_bavc_scratch.em_keys_cap, keys_need)) {
+      !bavc_cache_reserve(&scratch->em_keys, &scratch->em_keys_cap, keys_need)) {
     return false;
   }
-  memset(g_bavc_scratch.em_keys, 0, keys_need);
-  *keys = g_bavc_scratch.em_keys;
+  memset(scratch->em_keys, 0, keys_need);
+  *keys = scratch->em_keys;
 
   if (!bavc_mul_size((size_t)max_instances, com_size, com_lane_stride)) {
     return false;
   }
   size_t com_batch_need = 0;
   if (!bavc_mul_size((size_t)params->L, com_size, &com_batch_need) ||
-      !bavc_cache_reserve(&g_bavc_scratch.em_com_batch, &g_bavc_scratch.em_com_batch_cap,
+      !bavc_cache_reserve(&scratch->em_com_batch, &scratch->em_com_batch_cap,
                           com_batch_need)) {
     return false;
   }
-  *com_batch = g_bavc_scratch.em_com_batch;
+  *com_batch = scratch->em_com_batch;
 
   return true;
 }
@@ -365,8 +372,10 @@ static void bavc_commit_em(const params_t* params,
         const int h1_rc = h1_finalize_batch4_same_len_dispatch(
             lambda_bytes, msg, msg_len_region, digest, lane_count, h1_batch_scratch,
             h1_batch_scratch_stride);
-        assert(h1_rc == 0);
-        (void)h1_rc;
+        /* A failed batch must not enter the commitment transcript. */
+        if (h1_rc != 0) {
+          abort();
+        }
 
         H1_update(&h1_com_ctx, hi4[0], lane_count * 2u * lambda_bytes);
         i += (unsigned int)lane_count;
@@ -414,8 +423,10 @@ static void bavc_commit_em(const params_t* params,
           const int h1_rc = h1_finalize_batch4_same_len_dispatch(
               lambda_bytes, msg, msg_len_region, digest, lane_count, h1_batch_scratch,
               h1_batch_scratch_stride);
-          assert(h1_rc == 0);
-          (void)h1_rc;
+          /* A failed batch must not enter the commitment transcript. */
+          if (h1_rc != 0) {
+            abort();
+          }
 
           H1_update(&h1_com_ctx, hi4[0], lane_count * 2u * lambda_bytes);
           i += (unsigned int)lane_count;
@@ -496,25 +507,14 @@ bool bavc_open(const params_t* params, uint8_t* decom_i, const bavc_t* vc,
     com += bavc_max_node_index(i, tau_1, k) * com_size;
   }
 
-  // Step 19..25: emit opening seeds depth-by-depth.
-  unsigned int level_start = 0;
-  unsigned int level_count = 1;
-  while (level_start < (L - 1)) {
-    if (level_start + level_count > (L - 1)) {
-      level_count = (L - 1) - level_start;
+  /* Serialize opening seeds in descending internal-node order. */
+  for (unsigned int node = L - 1u; node-- > 0u;) {
+    const uint8_t left = on_path[2 * node + 1];
+    const uint8_t right = on_path[2 * node + 2];
+    if ((left ^ right) == 1) {
+      const unsigned int alpha = 2 * node + 1 + left;
+      decom_i = mempcpy(decom_i, NODE(vc->k, alpha, lambda_bytes), lambda_bytes);
     }
-
-    const unsigned int level_end = level_start + level_count;
-    for (unsigned int node = level_start; node < level_end; ++node) {
-      const uint8_t left = on_path[2 * node + 1];
-      const uint8_t right = on_path[2 * node + 2];
-      if ((left ^ right) == 1) {
-        const unsigned int alpha = 2 * node + 1 + left;
-        decom_i = mempcpy(decom_i, NODE(vc->k, alpha, lambda_bytes), lambda_bytes);
-      }
-    }
-    level_start += level_count;
-    level_count <<= 1;
   }
 
   memset(decom_i, 0, decom_i_end - decom_i);
@@ -523,7 +523,8 @@ bool bavc_open(const params_t* params, uint8_t* decom_i, const bavc_t* vc,
   return true;
 }
 
-static bool reconstruct_keys(const params_t* params, uint8_t* keys,
+static bool reconstruct_keys(bavc_scratch_cache_t* scratch,
+    const params_t* params, uint8_t* keys,
                              const uint8_t* decom_i, const uint16_t* i_delta,
                              const uint8_t* iv
                              ) {
@@ -534,7 +535,7 @@ static bool reconstruct_keys(const params_t* params, uint8_t* keys,
 
   SIG_TSTART(t_bavc_recon_mark_path);
   uint8_t* on_path = NULL;
-  if (!bavc_on_path_scratch_get((size_t)(2 * L - 1), &on_path)) {
+  if (!bavc_on_path_scratch_get(scratch, (size_t)(2 * L - 1), &on_path)) {
     return false;
   }
   if (!bavc_mark_open_path(params, i_delta, on_path, NULL)) {
@@ -546,30 +547,18 @@ static bool reconstruct_keys(const params_t* params, uint8_t* keys,
   const uint8_t* end   = nodes + params->t_open * lambda_bytes;
 
   SIG_TSTART(t_bavc_recon_read_opening);
-  // Read opening seeds in depth-major order.
-  unsigned int level_start = 0;
-  unsigned int level_count = 1;
-  while (level_start < (L - 1)) {
-    if (level_start + level_count > (L - 1)) {
-      level_count = (L - 1) - level_start;
-    }
-
-    const unsigned int level_end = level_start + level_count;
-    for (unsigned int node = level_start; node < level_end; ++node) {
-      const uint8_t left = on_path[2 * node + 1];
-      const uint8_t right = on_path[2 * node + 2];
-      if ((left ^ right) == 1) {
-        if (nodes == end) {
-          return false;
-        }
-        const unsigned int alpha = 2 * node + 1 + left;
-        memcpy(keys + (size_t)alpha * lambda_bytes, nodes, lambda_bytes);
-        nodes += lambda_bytes;
+  /* Read seeds in the same descending node order as BAVC.Open. */
+  for (unsigned int node = L - 1u; node-- > 0u;) {
+    const uint8_t left = on_path[2 * node + 1];
+    const uint8_t right = on_path[2 * node + 2];
+    if ((left ^ right) == 1) {
+      if (nodes == end) {
+        return false;
       }
+      const unsigned int alpha = 2 * node + 1 + left;
+      memcpy(keys + (size_t)alpha * lambda_bytes, nodes, lambda_bytes);
+      nodes += lambda_bytes;
     }
-
-    level_start += level_count;
-    level_count <<= 1;
   }
 
   for (; nodes != end; ++nodes) {
@@ -581,8 +570,8 @@ static bool reconstruct_keys(const params_t* params, uint8_t* keys,
 
   SIG_TSTART(t_bavc_recon_expand_hidden);
   // Expand hidden subtrees level-by-level in contiguous runs.
-  level_start = 0;
-  level_count = 1;
+  unsigned int level_start = 0;
+  unsigned int level_count = 1;
   while (level_start < (L - 1)) {
     if (level_start + level_count > (L - 1)) {
       level_count = (L - 1) - level_start;
@@ -616,7 +605,8 @@ static bool reconstruct_keys(const params_t* params, uint8_t* keys,
   return true;
 }
 
-static bool bavc_reconstruct_em(const params_t* params, bavc_rec_t* bavc_rec, 
+static bool bavc_reconstruct_em(bavc_scratch_cache_t* scratch,
+    const params_t* params, bavc_rec_t* bavc_rec,
                                       const uint8_t* decom_i, const uint16_t* i_delta,
                                       const uint8_t* iv) {
   // Initializing
@@ -637,7 +627,7 @@ static bool bavc_reconstruct_em(const params_t* params, bavc_rec_t* bavc_rec,
   uint8_t* com_batch = NULL;
   size_t com_lane_stride = 0;
   SIG_TSTART(t_bavc_recon_scratch);
-  if (!bavc_reconstruct_em_scratch_get(params, max_instances, com_size, &keys, &com_batch,
+  if (!bavc_reconstruct_em_scratch_get(scratch, params, max_instances, com_size, &keys, &com_batch,
                                        &com_lane_stride)) {
     return false;
   }
@@ -645,7 +635,7 @@ static bool bavc_reconstruct_em(const params_t* params, bavc_rec_t* bavc_rec,
 
   // Step 7..10
   SIG_TSTART(t_bavc_reconstruct_keys);
-  if (!reconstruct_keys(params, keys, decom_i, i_delta, iv
+  if (!reconstruct_keys(scratch, params, keys, decom_i, i_delta, iv
                         )) {
     return false;
   }
@@ -783,8 +773,10 @@ static bool bavc_reconstruct_em(const params_t* params, bavc_rec_t* bavc_rec,
       const int h1_rc = h1_finalize_batch4_same_len_dispatch(
           lambda_bytes, msg, msg_len[0], digest, lane_count, h1_batch_scratch,
           h1_batch_scratch_stride);
-      assert(h1_rc == 0);
-      (void)h1_rc;
+      /* A failed batch must not enter the commitment transcript. */
+      if (h1_rc != 0) {
+        abort();
+      }
       H1_update(&h1_com_ctx, hi4[0], lane_count * 2u * lambda_bytes);
     } else {
       if (!h1_ctx_inited) {
@@ -817,7 +809,10 @@ static bool bavc_reconstruct_em(const params_t* params, bavc_rec_t* bavc_rec,
 }
 bool bavc_reconstruct(const params_t* params, bavc_rec_t* bavc_rec, const uint8_t* decom_i,
                       const uint16_t* i_delta, const uint8_t* iv) {
-  return bavc_reconstruct_em(params, bavc_rec, decom_i, i_delta, iv);
+  bavc_scratch_cache_t scratch = {0};
+  const bool ok = bavc_reconstruct_em(&scratch, params, bavc_rec, decom_i, i_delta, iv);
+  bavc_scratch_clear(&scratch);
+  return ok;
 }
 
 void bavc_clear(bavc_t* com) {
