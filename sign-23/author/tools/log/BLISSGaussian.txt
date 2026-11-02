@@ -1,0 +1,21 @@
+Theoretical average acceptance probability: 0.975679
+Theoretical average rejection rate:   0.024321 (2.43%)
+
+\begin{table}[H]
+    \centering
+    \renewcommand{\arraystretch}{1.2}
+    \resizebox{\textwidth}{!}{
+    \begin{tabular}{|c|c|c|c|c|c|c|c|c|}
+        \hline
+        $\sigma_2$ & $k$ & \textbf{Avg. Acc.} & \textbf{Avg. Rej.} & \textbf{Avg. Iter.} & \textbf{P($>2N$)} & \textbf{Max. Exp.} & \textbf{Cost} & \textbf{All Cost} \\
+        \hline
+        3.2227 & 256 & 89.0\% & 11.0\% & 1438.46 & $2^{-1737.8}$ & 3.5006 & 65.74 & 94559.10 \\
+        1.6113 & 512 & 80.2\% & 19.8\% & 1596.91 & $2^{-842.5}$ & 7.1110 & 59.12 & 94406.59 \\
+        0.8057 & 1024 & 66.9\% & 33.1\% & 1913.83 & $2^{-229.5}$ & 14.6207 & 55.93 & 107048.28 \\
+        \hline
+    \end{tabular}
+    }
+    \caption{Gaussian sampler performance for different $\sigma_2$ and $k$, with $\sigma=825$.Avg. Iter. is the average number of calls needed to obtain N=1280 valid samples when the average acceptance rate is p, i.e., N/p. P($>2N$) is the probability that obtaining N=1280 valid samples requires more than 2N calls. Max. Exp. is the maximum exponent at $u=1, x=11\sigma_2$. Cost is the estimated cost, where the PRNG cost per byte is y=2 cycles and $cost=cost1+cost2+cost3+cost4$, $cost1=12y$, $cost2=11\sigma_2\cdot 3.1/8$, $cost3=\log_2(k)\cdot y/8$, and $cost4=26$ cycles. All Cost is defined as the product of Cost and Avg. Iter..}
+    \label{tab:rejection-rates-comprehensive-1}
+\end{table}
+

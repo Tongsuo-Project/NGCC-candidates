@@ -1,0 +1,7 @@
+[options]
+optimization = 2
+b_ndebug = true
+buildtype = release
+
+[properties]
+

@@ -1,0 +1,4 @@
+lvl = 2
+p = 0x11fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+num_orders = 1
+primes_per_order = 101

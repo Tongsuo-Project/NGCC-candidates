@@ -1,0 +1,3 @@
+max accept relative error = 3.9643542191467770352226359556606978857138e-17
+accept precision          = 54.48569173850848214656 bits
+worst point               = x=36 y=248

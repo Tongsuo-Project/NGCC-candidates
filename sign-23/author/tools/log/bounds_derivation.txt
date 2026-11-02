@@ -1,0 +1,31 @@
+gen_bounds.py -- SHUTTLE exact integer squared-norm thresholds
+
+Inclusive-gate rounding rule:
+  BK_SQ     = floor(B_k^2)    (KeyGen upper, '<='  on B_k)
+  BK_LOW_SQ = ceil(B_k'^2)    (KeyGen lower, '>='  on B_k')
+  BV_SQ     = floor(B_v^2)    (Sign+Verify, '<='  on B_v, SHARED)
+
+=== SHUTTLE-128 ===
+  B_k  = 295.06    B_k^2  = 87060.4036
+    -> BK_SQ     = floor(B_k^2)  = 87060   (accept iff nsq <= BK_SQ)
+  B_k' = 290    B_k'^2 = 84100
+    -> BK_LOW_SQ = ceil(B_k'^2)  = 84100   (accept iff nsq >= BK_LOW_SQ)
+  B_v  = 7356.68    B_v^2  = 54120740.6224
+    -> BV_SQ     = floor(B_v^2)  = 54120740   (Sign+Verify, accept iff nsq <= BV_SQ)
+
+=== SHUTTLE-256 ===
+  B_k  = 296.19    B_k^2  = 87728.5161
+    -> BK_SQ     = floor(B_k^2)  = 87728   (accept iff nsq <= BK_SQ)
+  B_k' = 290    B_k'^2 = 84100
+    -> BK_LOW_SQ = ceil(B_k'^2)  = 84100   (accept iff nsq >= BK_LOW_SQ)
+  B_v  = 10385.53    B_v^2  = 107859233.3809
+    -> BV_SQ     = floor(B_v^2)  = 107859233   (Sign+Verify, accept iff nsq <= BV_SQ)
+
+=== SHUTTLE-512 ===
+  B_k  = 292.76    B_k^2  = 85708.4176
+    -> BK_SQ     = floor(B_k^2)  = 85708   (accept iff nsq <= BK_SQ)
+  B_k' = 290    B_k'^2 = 84100
+    -> BK_LOW_SQ = ceil(B_k'^2)  = 84100   (accept iff nsq >= BK_LOW_SQ)
+  B_v  = 25194.90    B_v^2  = 634782986.0100
+    -> BV_SQ     = floor(B_v^2)  = 634782986   (Sign+Verify, accept iff nsq <= BV_SQ)
+

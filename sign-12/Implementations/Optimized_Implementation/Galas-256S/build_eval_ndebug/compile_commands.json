@@ -1,0 +1,92 @@
+[
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "cc -Ilibngcc_aux.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c99 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libngcc_aux.a.p/auxfunc.c.o -MF libngcc_aux.a.p/auxfunc.c.o.d -o libngcc_aux.a.p/auxfunc.c.o -c ../auxfunc.c",
+    "file": "../auxfunc.c",
+    "output": "libngcc_aux.a.p/auxfunc.c.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "cc -Ilibngcc_aux.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c99 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libngcc_aux.a.p/drng.c.o -MF libngcc_aux.a.p/drng.c.o.d -o libngcc_aux.a.p/drng.c.o -c ../drng.c",
+    "file": "../drng.c",
+    "output": "libngcc_aux.a.p/drng.c.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/avx2_aes_impl.cpp.o -MF libgalas_opt.a.p/avx2_aes_impl.cpp.o.d -o libgalas_opt.a.p/avx2_aes_impl.cpp.o -c ../avx2/aes_impl.cpp",
+    "file": "../avx2/aes_impl.cpp",
+    "output": "libgalas_opt.a.p/avx2_aes_impl.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/faest.cpp.o -MF libgalas_opt.a.p/faest.cpp.o.d -o libgalas_opt.a.p/faest.cpp.o -c ../faest.cpp",
+    "file": "../faest.cpp",
+    "output": "libgalas_opt.a.p/faest.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/owf_proof.cpp.o -MF libgalas_opt.a.p/owf_proof.cpp.o.d -o libgalas_opt.a.p/owf_proof.cpp.o -c ../owf_proof.cpp",
+    "file": "../owf_proof.cpp",
+    "output": "libgalas_opt.a.p/owf_proof.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/polynomials_constants.cpp.o -MF libgalas_opt.a.p/polynomials_constants.cpp.o.d -o libgalas_opt.a.p/polynomials_constants.cpp.o -c ../polynomials_constants.cpp",
+    "file": "../polynomials_constants.cpp",
+    "output": "libgalas_opt.a.p/polynomials_constants.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/small_vole.cpp.o -MF libgalas_opt.a.p/small_vole.cpp.o.d -o libgalas_opt.a.p/small_vole.cpp.o -c ../small_vole.cpp",
+    "file": "../small_vole.cpp",
+    "output": "libgalas_opt.a.p/small_vole.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/vector_com.cpp.o -MF libgalas_opt.a.p/vector_com.cpp.o.d -o libgalas_opt.a.p/vector_com.cpp.o -c ../vector_com.cpp",
+    "file": "../vector_com.cpp",
+    "output": "libgalas_opt.a.p/vector_com.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/vole_commit.cpp.o -MF libgalas_opt.a.p/vole_commit.cpp.o.d -o libgalas_opt.a.p/vole_commit.cpp.o -c ../vole_commit.cpp",
+    "file": "../vole_commit.cpp",
+    "output": "libgalas_opt.a.p/vole_commit.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "cc -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c99 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/randomness_randombytes.c.o -MF libgalas_opt.a.p/randomness_randombytes.c.o.d -o libgalas_opt.a.p/randomness_randombytes.c.o -c ../randomness_randombytes.c",
+    "file": "../randomness_randombytes.c",
+    "output": "libgalas_opt.a.p/randomness_randombytes.c.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "cc -Ilibgalas_opt.a.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c99 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -fPIC -MD -MQ libgalas_opt.a.p/randomness_os.c.o -MF libgalas_opt.a.p/randomness_os.c.o.d -o libgalas_opt.a.p/randomness_os.c.o -c ../randomness_os.c",
+    "file": "../randomness_os.c",
+    "output": "libgalas_opt.a.p/randomness_os.c.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Igalas_test.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -MD -MQ galas_test.p/test_main.cpp.o -MF galas_test.p/test_main.cpp.o.d -o galas_test.p/test_main.cpp.o -c ../test_main.cpp",
+    "file": "../test_main.cpp",
+    "output": "galas_test.p/test_main.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Igalas_sign_test.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -MD -MQ galas_sign_test.p/test_sign.cpp.o -MF galas_sign_test.p/test_sign.cpp.o.d -o galas_sign_test.p/test_sign.cpp.o -c ../test_sign.cpp",
+    "file": "../test_sign.cpp",
+    "output": "galas_sign_test.p/test_sign.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Igalas_bench.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -MD -MQ galas_bench.p/bench.cpp.o -MF galas_bench.p/bench.cpp.o.d -o galas_bench.p/bench.cpp.o -c ../bench.cpp",
+    "file": "../bench.cpp",
+    "output": "galas_bench.p/bench.cpp.o"
+  },
+  {
+    "directory": "/mnt/c/Users/admin/Desktop/niccs/NGCC_Submit/Implementations/Optimized_Implementation/Galas-256S/build_eval_ndebug",
+    "command": "c++ -Igalas_verify_kat.p -I. -I.. -flto=auto -fdiagnostics-color=always -DNDEBUG -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -std=c++23 -O2 -march=x86-64 -mavx2 -maes -mpclmul -mtune=native -fomit-frame-pointer -MD -MQ galas_verify_kat.p/verify_kat.cpp.o -MF galas_verify_kat.p/verify_kat.cpp.o.d -o galas_verify_kat.p/verify_kat.cpp.o -c ../verify_kat.cpp",
+    "file": "../verify_kat.cpp",
+    "output": "galas_verify_kat.p/verify_kat.cpp.o"
+  }
+]

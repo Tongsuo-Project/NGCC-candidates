@@ -1,0 +1,43 @@
+gen_params.py -- SHUTTLE derived constants (reproducible)
+
+Each value is a closed-formula function of the PRIMARY (N, Q,
+alpha_b, alpha_h) constants of tab:suf-parameters.  Assertions:
+  ZETA^n == -1 mod q,  ZETA^{2n} == 1 mod q,  n*NINV == 1 mod q,
+  H_h integer,  2^DQ_BITS >= Q,  DS_BITS/DE_BITS == formula.
+
+=== SHUTTLE-128  (n=256, q=15361, alpha_b=2, alpha_h=1024) ===
+  DQ_BITS = ceil(log2 15361)              = 14
+  BQ      = ceil(14/8)                  = 2
+  DB_BITS = ceil(log2 ceil(15361/2))    = ceil(log2 7681) = 13
+  HH      = 2(15361-1)/1024           = 30   (NON-power-of-2: decode must range-check, never mod)
+  DH_BITS = ceil(log2 30)              = 5
+  ZETA    = smallest primitive 2n-th root    = 98   (ZETA^256 = -1 mod 15361, order exactly 512)
+  NINV    = pow(256, -1, 15361)           = 15301   (256*15301 mod 15361 = 1)
+  DN_BITS = ceil(log2 256)              = 8
+  BN      = ceil(8/8)                  = 1
+  cross-check: DS_BITS = ceil(log2(2*9+1)) = 5 (OK), DE_BITS = ceil(log2(2*10+1)) = 5 (OK)
+
+=== SHUTTLE-256  (n=512, q=61441, alpha_b=2, alpha_h=1024) ===
+  DQ_BITS = ceil(log2 61441)              = 16
+  BQ      = ceil(16/8)                  = 2
+  DB_BITS = ceil(log2 ceil(61441/2))    = ceil(log2 30721) = 15
+  HH      = 2(61441-1)/1024           = 120   (NON-power-of-2: decode must range-check, never mod)
+  DH_BITS = ceil(log2 120)              = 7
+  ZETA    = smallest primitive 2n-th root    = 21   (ZETA^512 = -1 mod 61441, order exactly 1024)
+  NINV    = pow(512, -1, 61441)           = 61321   (512*61321 mod 61441 = 1)
+  DN_BITS = ceil(log2 512)              = 9
+  BN      = ceil(9/8)                  = 2
+  cross-check: DS_BITS = ceil(log2(2*10+1)) = 5 (OK), DE_BITS = ceil(log2(2*12+1)) = 5 (OK)
+
+=== SHUTTLE-512  (n=1024, q=59393, alpha_b=4, alpha_h=2048) ===
+  DQ_BITS = ceil(log2 59393)              = 16
+  BQ      = ceil(16/8)                  = 2
+  DB_BITS = ceil(log2 ceil(59393/4))    = ceil(log2 14849) = 14
+  HH      = 2(59393-1)/2048           = 58   (NON-power-of-2: decode must range-check, never mod)
+  DH_BITS = ceil(log2 58)              = 6
+  ZETA    = smallest primitive 2n-th root    = 3   (ZETA^1024 = -1 mod 59393, order exactly 2048)
+  NINV    = pow(1024, -1, 59393)           = 59335   (1024*59335 mod 59393 = 1)
+  DN_BITS = ceil(log2 1024)              = 10
+  BN      = ceil(10/8)                  = 2
+  cross-check: DS_BITS = ceil(log2(2*10+1)) = 5 (OK), DE_BITS = ceil(log2(2*12+1)) = 5 (OK)
+

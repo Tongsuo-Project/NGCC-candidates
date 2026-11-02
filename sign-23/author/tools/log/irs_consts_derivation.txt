@@ -1,0 +1,26 @@
+gen_irs_consts.py -- SHUTTLE IRS R-transition fixed-point constant
+
+  r = 825, 2 r^2 = 1361250
+  2 r^2 ln 2 = 943546.5995372255524442072
+  R2LN2_QSHIFT (F) = 44
+  R2LN2_QF = round(2 r^2 ln2 * 2^44) = 16599047320634951608  (0xE65BA997B45887B8)
+  fits uint64_t: 16599047320634951608 < 2^64 = 18446744073709551616  -> True
+  constant relative error = 2^-65.1577
+
+u Q-form (irs.c R_transition):
+  u_frac = round(R2LN2_QF * frac_q62 / 2^62) = (R2LN2_QF*frac + 2^61) >> 62  [Q_F]
+  u_a    = a * R2LN2_QF   [Q_F]
+  u      = u_frac - u_a   [Q_F]   compared against (B << F), B = -2 m t - m^2 V
+
+Error budget cross-check (delta_tau <= 2^-45):
+  ApproxLog ln-additive       = ln2 * 2^-59.37 = 2^-59.8988
+  constant amplified (|lnU|<= 56.15) = 56.15*2^-65.1577 = 2^-59.3464
+  total delta_log             = 2^-58.5703
+  accumulated delta_tau       = 114 * 2^5.02 * (e^delta_log - 1) = 2^-46.7048   (< 2^-45)
+
+__int128 range (no overflow):
+  R2LN2_QF * frac_q62 <= 2^125.848  (< 2^128, unsigned __int128)
+  |u|, |B<<F|          <= ~2^70.1876  (< 2^127, signed __int128)
+
+Dense-grid reproduction check: 20000 (t,V,ell) triples, integer vs float flag mismatches = 0
+  PASS: integer u-vs-boundary comparison == float threshold test on every grid point.

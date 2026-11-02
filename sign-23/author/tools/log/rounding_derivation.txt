@@ -1,0 +1,25 @@
+gen_rounding.py -- CompressY round-half-up magic reciprocals
+Exhaustively verified exact for v in (-2^20, 2^20) = (-1048576,1048576).
+Kernel: q = (2*v*RECIP + ROUND_BIAS) >> SHIFT;  res = q - ROUND_K
+        == round_half_up(v, alpha) = floor((2v+alpha)/(2 alpha))
+Shift-invariant (ties toward +inf): restores the CompressY
+translation identity CompressY(y+alpha*x)=CompressY(y)+x for all alpha.
+
+=== SHUTTLE-128 ===
+  alpha_1 = 90: RECIP=2982617 SHIFT=29 ROUND_BIAS=6255353155590 ROUND_K=11651  (2*alpha=180)
+  alpha_S = 10: RECIP=838861 SHIFT=24 ROUND_BIAS=1759234123370 ROUND_K=104858  (2*alpha=20)
+  alpha_E = 5: RECIP=6710887 SHIFT=26 ROUND_BIAS=14073837335355 ROUND_K=209716  (2*alpha=10)
+  alpha_h = 1024: LOG2_ALPHA_H = 10
+
+=== SHUTTLE-256 ===
+  alpha_1 = 135: RECIP=1988411 SHIFT=29 ROUND_BIAS=4170682130445 ROUND_K=7768  (2*alpha=270)
+  alpha_S = 5: RECIP=6710887 SHIFT=26 ROUND_BIAS=14073837335355 ROUND_K=209716  (2*alpha=10)
+  alpha_E = 5: RECIP=6710887 SHIFT=26 ROUND_BIAS=14073837335355 ROUND_K=209716  (2*alpha=10)
+  alpha_h = 1024: LOG2_ALPHA_H = 10
+
+=== SHUTTLE-512 ===
+  alpha_1 = 144: RECIP=3728271 SHIFT=30 ROUND_BIAS=7819526464560 ROUND_K=7282  (2*alpha=288)
+  alpha_S = 3: RECIP=2796203 SHIFT=24 ROUND_BIAS=5864082287277 ROUND_K=349526  (2*alpha=6)
+  alpha_E = 3: RECIP=2796203 SHIFT=24 ROUND_BIAS=5864082287277 ROUND_K=349526  (2*alpha=6)
+  alpha_h = 2048: LOG2_ALPHA_H = 11
+

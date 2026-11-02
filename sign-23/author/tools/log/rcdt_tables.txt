@@ -1,0 +1,43 @@
+gen_rcdt.py -- SHUTTLE 96-bit RCDT base-sampler tables (reproducible)
+
+Re-derives the four tables exactly as BaseSampler.py (compute_base_sampler_tables,
+theta=96, w=ceil(11*sigma), PDT-floor + z=0 mass fill, RCDT=total-CDT, drop
+trailing zeros).  ASSERTs INV-NOMAX (mid/high limb != 0xFFFFFFFF) on every row,
+re-checks Renyi divergence and the induced post-zero-fold noise stddev gaps.
+
+=== SHUTTLE_RCDT_Z: sigma=3.22265625, w=36, rows=36, theta=96 ===
+  INV-NOMAX: OK (36 rows, 0 mid/high limb == 0xFFFFFFFF)
+  first row: {0x402F7FA2, 0x12C69654, 0xC7999458}
+  Renyi R_1045 = 1 + 2^(-95.40)
+  Renyi R_inf       = 1 + 2^(-89.55)
+
+=== SHUTTLE_RCDT_NOISE_0_85: sigma=0.85, w=10, rows=9, theta=96 ===
+  INV-NOMAX: OK (9 rows, 0 mid/high limb == 0xFFFFFFFF)
+  first row: {0xC3CB73B8, 0xF67BCC8D, 0x5C747AA6}
+  Renyi R_1023 = 1 + 2^(-100.48)
+  Renyi R_inf       = 1 + 2^(-93.83)
+  support range: [-9, 9]
+  zero-fold accept prob: 0.680576165085987482
+  induced (post-zero-fold) stddev: 0.849984479877745283212476682702
+  gap from ideal sigma=0.85: -1.552012E-5 (-2^(-15.98))
+
+=== SHUTTLE_RCDT_NOISE_0_90: sigma=0.9, w=10, rows=10, theta=96 ===
+  INV-NOMAX: OK (10 rows, 0 mid/high limb == 0xFFFFFFFF)
+  first row: {0x63C3A91B, 0x73D08C99, 0x62C00D07}
+  Renyi R_1023 = 1 + 2^(-96.74)
+  Renyi R_inf       = 1 + 2^(-93.41)
+  support range: [-10, 10]
+  zero-fold accept prob: 0.692871482047764696
+  induced (post-zero-fold) stddev: 0.899996724647142366364962010338
+  gap from ideal sigma=0.9: -3.275353E-6 (-2^(-18.22))
+
+=== SHUTTLE_RCDT_NOISE_1_00: sigma=1.0, w=11, rows=11, theta=96 ===
+  INV-NOMAX: OK (11 rows, 0 mid/high limb == 0xFFFFFFFF)
+  first row: {0x2BFDBDFC, 0xB7D318D4, 0x6DFDA4E6}
+  Renyi R_1023 = 1 + 2^(-96.38)
+  Renyi R_inf       = 1 + 2^(-92.66)
+  support range: [-11, 11]
+  zero-fold accept prob: 0.714825776256395601
+  induced (post-zero-fold) stddev: 0.999999894383858464171185063376
+  gap from ideal sigma=1.0: -1.056161E-7 (-2^(-23.17))
+
