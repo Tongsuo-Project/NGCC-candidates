@@ -1,0 +1,26 @@
+gen_rans_tables.py -- SHUTTLE rANS frequency tables (reproducible)
+
+Three static models per set (prob_bits=10, M=1024), quantized with the
+deterministic largest-`raw` (lowest-index) tie-break so each FREQ sums to M.
+Q0/Qs are the retained quotients floor(z/2^b) of the rounded Gaussian z;
+hint is the whole [0,H_h) bucket-crossing law.  Per slot the GM reciprocal
+RCP/RSH/BIAS is verify_sym-checked == plain divide over the encoder x range.
+
+=== SHUTTLE-128 (b0=2 bs=6) ===
+  Q0  : support [-26,25] (52 syms)  H=3.2548 bit/coef
+  Qs  : support [-15,14] (30 syms)  H=2.4487 bit/coef
+  hint: range [0,30) (30 syms)  H=1.0811 bit/coef
+  quantizer: all FREQ sum == 1024, min freq >= 1; GM reciprocals verify_sym-PASS
+
+=== SHUTTLE-256 (b0=2 bs=7) ===
+  Q0  : support [-17,17] (35 syms)  H=2.6838 bit/coef
+  Qs  : support [-15,14] (30 syms)  H=2.4487 bit/coef
+  hint: range [0,120) (120 syms)  H=1.0811 bit/coef
+  quantizer: all FREQ sum == 1024, min freq >= 1; GM reciprocals verify_sym-PASS
+
+=== SHUTTLE-512 (b0=2 bs=7) ===
+  Q0  : support [-16,16] (33 syms)  H=2.5941 bit/coef
+  Qs  : support [-24,23] (48 syms)  H=3.1633 bit/coef
+  hint: range [0,58) (58 syms)  H=0.9640 bit/coef
+  quantizer: all FREQ sum == 1024, min freq >= 1; GM reciprocals verify_sym-PASS
+

@@ -1,0 +1,21 @@
+
+SHUTTLE-NGCC-SUF 128:
+  lambda = 166, n = 256, L = 3, M = 3
+  Q_exp = Q_bs = 2^91.13
+  emitted-sample distortion bound  delta   = 2^{-50.25}
+  required acceptance rel. error   eta_max = 2^{-51.25}
+  BaseSampler Renyi budget         1/(4Qbs)= 2^{-93.13}
+
+SHUTTLE-NGCC-SUF 256:
+  lambda = 267, n = 512, L = 3, M = 2
+  Q_exp = Q_bs = 2^91.91
+  emitted-sample distortion bound  delta   = 2^{-50.98}
+  required acceptance rel. error   eta_max = 2^{-51.98}
+  BaseSampler Renyi budget         1/(4Qbs)= 2^{-93.91}
+
+SHUTTLE-NGCC-SUF 512:
+  lambda = 523, n = 1024, L = 3, M = 2
+  Q_exp = Q_bs = 2^92.91
+  emitted-sample distortion bound  delta   = 2^{-51.97}
+  required acceptance rel. error   eta_max = 2^{-52.97}
+  BaseSampler Renyi budget         1/(4Qbs)= 2^{-94.91}

@@ -1,0 +1,29 @@
+SHUTTLE SamplerU / ApproxLog : segmented base-2 logarithm
+target log2(b), b in [1,2);  eta_log <= 2^-57 absolute
+coefficient format = signed Q62;  x = Q64 multiplier in [0,1)
+runtime = no branch, no division, full-table constant-time row scan
+wide multiply use = (acc*x)>>64 high half only (>>64), __int128 acc
+
+selected scheme : g=2 (4 segments), degree=13
+  multiplies (Horner)      = 13
+  table                    = 4 x 14 int64 = 448 bytes
+  measured max abs error   = 1.2672953e-18 = 2^-59.452953
+  worst b                  = 1.15373352855
+  max coeff bits           = 62;  fits int64 = True
+  strictly increasing      = True
+  ApproxLog(0,1)=0 pinned   = True
+  128-bit product safe      = True
+
+comparison sweep (min degree to reach 2^-57 with >=0.5-bit margin):
+g segments degree mults table_entries table_bytes scan_ops abs_bits fits_i64 mono note
+2 4 13 13 56 448 56 59.45295 True True selected
+
+selected coefficients kShuttleLogPoly[4][14] (Q62, low->high):
+  j=  0  beta=1.0  err=2^-59.453
+    0, 1663314137230540005, -207914267153782834, 34652377857794422, -6497320829889967, 1299464001399016, -270720747985221, 58008183734025, -12680634058615, 2802591328231, -611697204761, 123141961189, -19530076391, 1717255301
+  j=  1  beta=1.25  err=2^-60.4661
+    1484631294131014398, 1330651309784432187, -133065130978439107, 17742017463685572, -2661302618120493, 425808407352253, -70968007646487, 12165731010280, -2128477788302, 377485364884, -66839897685, 11228353229, -1554229086, 124985134
+  j=  2  beta=1.5  err=2^-60.9231
+    2697663385880076776, 1108876091487026868, -92406340957251847, 10267371217462318, -1283421402046772, 171122852511038, -23767057140815, 3395273701197, -495094418506, 73261264270, -10884612082, 1561954161, -191070343, 14130118
+  j=  3  beta=1.75  err=2^-59.9717
+    3723267405961586381, 950465221274594463, -67890372948185266, 6465749804587722, -692758907616243, 79172446438655, -9425290482070, 1154114515161, -144257705268, 18306992888, -2339854304, 292286931, -31958889, 2187745

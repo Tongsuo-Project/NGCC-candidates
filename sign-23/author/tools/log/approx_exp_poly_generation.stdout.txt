@@ -1,0 +1,38 @@
+SHUTTLE accept-branch branchless polynomial
+r = 825, k = 256
+x in {0,...,36}, y in {0,...,255}
+N = y*(y+512*x), p = -N/(2*r^2)
+minimum p = -3.500595041322314049586776859504132231405 at x=36 y=255
+selected scheme = q(s)^(2^7) = q(s)^128
+s = N/2^23, q(s) degree-8 Taylor for exp(-a*s)
+a = 2^23/(128*2*r^2) = 0.04814398530762167125803489439853076216713
+runtime constraints = no branch in generated approximation body, no division, no table access
+wide multiply use = high-half shifts; Q64*Q64 uses >>64, Q64*Q63 uses high64*2
+selected multiply count = degree+squarings = 8+7 = 15
+mpmath audit max relative error = 3.964354219146777029802074903995234281234e-17
+mpmath audit precision = 54.4856917385084821485286380188 bits at x=36 y=248
+max signed coefficient bits = 60; int64 fit = True
+
+comparison under identical fixed-point semantics:
+split squarings degree total_mul precision_bits worst_x worst_y coeff_bits int64_coeff note
+1 0 31 31 54.5947498643775927 36 255 71 False passes; pure polynomial
+2 1 23 24 55.8685076508877562 36 255 67 False passes
+4 2 18 20 58.2029514561323313 36 226 65 False passes
+8 3 14 17 54.6615857421863567 36 255 64 False passes
+16 4 12 16 57.2964872450169773 33 223 63 True passes; previous scheme
+32 5 10 15 56.035754518989032 36 255 62 True passes
+64 6 9 15 55.2513208173482561 36 251 61 True passes
+128 7 8 15 54.4856917385084821 36 248 60 True passes; selected
+256 8 7 15 53.5221515577562225 35 253 59 True passes
+512 9 6 15 52.8340794982844479 24 212 58 True fails
+
+coefficients: c0 is UINT64_MAX, c1..cd are signed Q64
+c0 = UINT64_MAX
+c1 = -888099775658129789
+c2 = 21378331275493551
+c3 = -343079355609610
+c4 = 4129301863954
+c5 = -39760209654
+c6 = 319035825
+c7 = -2194237
+c8 = 13205

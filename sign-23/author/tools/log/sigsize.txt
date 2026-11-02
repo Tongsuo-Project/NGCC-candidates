@@ -1,0 +1,27 @@
+SigSize.py -- SHUTTLE rANS reserve + sig-size model (reproducible)
+
+Reserve R sized for 2^-35 per-stream overflow (Phi^{-1}(1-2^-35)~6.86,
+Bernstein p=2^-35).  Sizes are APPROXIMATE (theoretical PMFs); re-validated empirically
+against empirical Sign output and re-pinned.
+
+=== SHUTTLE-128 (b0=2 bs=6) ===
+  sweep optimum == PINNED_SPLIT (b0=2,bs=6): OK
+  mu_b=459.14B sigma_b=5.490B Delta_CLT=37.66 Delta_Bern=49.66 -> R=509
+  Pr[com_len > R] <= 2^-35.0  (target 2^-35)
+  Rlow=640B  realized sig=1183B (target 1005, delta +178)
+  expected sig ~1133B (mu_b), entropy floor ~1115B; floor alone exceeds target by 110B
+
+=== SHUTTLE-256 (b0=2 bs=7) ===
+  sweep optimum == PINNED_SPLIT (b0=2,bs=7): OK
+  mu_b=818.71B sigma_b=6.943B Delta_CLT=47.63 Delta_Bern=59.52 -> R=879
+  Pr[com_len > R] <= 2^-35.0  (target 2^-35)
+  Rlow=1472B  realized sig=2417B (target 2155, delta +262)
+  expected sig ~2357B (mu_b), entropy floor ~2316B; floor alone exceeds target by 161B
+
+=== SHUTTLE-512 (b0=2 bs=7) ===
+  sweep optimum == PINNED_SPLIT (b0=2,bs=7): OK
+  mu_b=1845.19B sigma_b=10.114B Delta_CLT=69.38 Delta_Bern=81.28 -> R=1927
+  Pr[com_len > R] <= 2^-35.0  (target 2^-35)
+  Rlow=2944B  realized sig=5001B (target 4552, delta +449)
+  expected sig ~4919B (mu_b), entropy floor ~4866B; floor alone exceeds target by 314B
+

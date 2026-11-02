@@ -1,0 +1,2 @@
+Algorithm instance: Galas-256S
+Use the Meson build in this directory. The source supports all Galas instances; this folder is the submission copy for Galas-256S.

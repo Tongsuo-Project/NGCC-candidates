@@ -1,0 +1,36 @@
+#include "block.h"
+
+extern inline block160 block160_xor(block160 x, block160 y);
+extern inline block160 block160_and(block160 x, block160 y);
+extern inline block160 block160_set_zero(void);
+extern inline block160 block160_set_all_8(uint8_t x);
+extern inline block160 block160_set_low32(uint32_t x);
+extern inline block160 block160_set_low64(uint64_t x);
+extern inline bool block160_any_zeros(block160 x);
+extern inline block320 block320_xor(block320 x, block320 y);
+extern inline block320 block320_and(block320 x, block320 y);
+extern inline block320 block320_set_zero(void);
+extern inline block320 block320_set_all_8(uint8_t x);
+extern inline block320 block320_set_low32(uint32_t x);
+extern inline block320 block320_set_low64(uint64_t x);
+extern inline bool block320_any_zeros(block320 x);
+extern inline block192 block192_xor(block192 x, block192 y);
+extern inline block192 block192_and(block192 x, block192 y);
+extern inline block192 block192_set_zero(void);
+extern inline block192 block192_set_all_8(uint8_t x);
+extern inline block192 block192_set_low32(uint32_t x);
+extern inline block192 block192_set_low64(uint64_t x);
+extern inline bool block192_any_zeros(block192 x);
+extern inline block_secpar block_secpar_xor(block_secpar x, block_secpar y);
+extern inline block_secpar block_secpar_and(block_secpar x, block_secpar y);
+extern inline block_secpar block_secpar_set_all_8(uint8_t x);
+extern inline block_secpar block_secpar_set_low32(uint32_t x);
+extern inline block_secpar block_secpar_set_low64(uint64_t x);
+extern inline block_secpar block_secpar_set_zero(void);
+extern inline block_2secpar block_2secpar_xor(block_2secpar x, block_2secpar y);
+extern inline block_2secpar block_2secpar_and(block_2secpar x, block_2secpar y);
+extern inline block_2secpar block_2secpar_set_all_8(uint8_t x);
+extern inline block_2secpar block_2secpar_set_low32(uint32_t x);
+extern inline block_2secpar block_2secpar_set_low64(uint64_t x);
+extern inline block_2secpar block_2secpar_set_zero(void);
+extern inline bool block_secpar_any_zeros(block_secpar x);
