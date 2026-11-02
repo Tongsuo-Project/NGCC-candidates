@@ -1,3 +1,4 @@
+/* Unused signature-independent helpers were removed; active backend entrypoints remain. */
 // sm4_ref.c
 // 2018-04-20  Markku-Juhani O. Saarinen <mjos@iki.fi>
 
@@ -5,6 +6,9 @@
 // Adopted from Internet Draft draft-ribose-cfrg-sm4 with some modifications.
 
 #include "sm4_ref.h"
+#include "../sm4.h"
+#include "../../macros.h"
+#include "../../x86_caps.h"
 
 /* Operations */
 /* Rotate Left 32-bit number */
@@ -21,6 +25,8 @@ static const uint32_t sm4_ck[32] = {
     0x10171E25, 0x2C333A41, 0x484F565D, 0x646B7279
 };
 
+/* The legacy SM4 backend is table-free unless explicitly enabled. */
+#if REF_USE_LOOKUP_TABLES
 static const uint8_t sm4_sbox[256] = {
     0xD6, 0x90, 0xE9, 0xFE, 0xCC, 0xE1, 0x3D, 0xB7,
     0x16, 0xB6, 0x14, 0xC2, 0x28, 0xFB, 0x2C, 0x05,
@@ -55,6 +61,15 @@ static const uint8_t sm4_sbox[256] = {
     0x18, 0xF0, 0x7D, 0xEC, 0x3A, 0xDC, 0x4D, 0x20,
     0x79, 0xEE, 0x5F, 0x3E, 0xD7, 0xCB, 0x39, 0x48
 };
+#endif
+
+static uint8_t sm4_ref_sub_byte(uint8_t x) {
+#if REF_USE_LOOKUP_TABLES
+  return sm4_sbox[x];
+#else
+  return sm4_compute_sbox(x);
+#endif
+}
 
 static const uint32_t sm4_fk[4] = {
   0xA3B1BAC6, 0x56AA3350, 0x677D9197, 0xB27022DC
@@ -76,7 +91,9 @@ static void store_u32_be(uint32_t v, uint8_t *b)
   b[3] = (uint8_t)(v);
 }
 
-void sm4_key_schedule(const uint8_t key[], uint32_t rk[])
+/* A constant S-box callback shares the unchanged key schedule body. */
+static inline __attribute__((always_inline)) void sm4_key_schedule_body(
+    const uint8_t key[], uint32_t rk[], uint8_t (*sub_byte)(uint8_t))
 {
   uint32_t t, x, k[36];
   int i;
@@ -92,15 +109,35 @@ void sm4_key_schedule(const uint8_t key[], uint32_t rk[])
     x = k[i + 1] ^ k[i + 2] ^ k[i + 3] ^ sm4_ck[i];
 
     /* Nonlinear operation tau */
-    t = ((uint32_t)sm4_sbox[(uint8_t)(x >> 24)]) << 24 |
-        ((uint32_t)sm4_sbox[(uint8_t)(x >> 16)]) << 16 |
-        ((uint32_t)sm4_sbox[(uint8_t)(x >>  8)]) <<  8 |
-        ((uint32_t)sm4_sbox[(uint8_t)(x)]);
+    t = ((uint32_t)sub_byte((uint8_t)(x >> 24))) << 24 |
+        ((uint32_t)sub_byte((uint8_t)(x >> 16))) << 16 |
+        ((uint32_t)sub_byte((uint8_t)(x >>  8))) <<  8 |
+        ((uint32_t)sub_byte((uint8_t)(x)));
 
     /* Linear operation L' */
     k[i+4] = k[i] ^ (t ^ ROTL32(t, 13) ^ ROTL32(t, 23));
     rk[i] = k[i + 4];
   }
+}
+
+#if SM4TH_X86_TARGET && !REF_USE_LOOKUP_TABLES
+__attribute__((target("avx2,avx512f,avx512vl,avx512bw")))
+static void sm4_key_schedule_avx512(const uint8_t key[], uint32_t rk[])
+{
+    sm4_key_schedule_body(key, rk, sm4_compute_sbox_avx512);
+}
+#endif
+
+void sm4_key_schedule(const uint8_t key[], uint32_t rk[])
+{
+#if SM4TH_X86_TARGET && !REF_USE_LOOKUP_TABLES
+    /* Select once for the whole key schedule, never once per S-box. */
+    if (sm4th_x86_has_avx512bw_vl()) {
+        sm4_key_schedule_avx512(key, rk);
+        return;
+    }
+#endif
+    sm4_key_schedule_body(key, rk, sm4_ref_sub_byte);
 }
 
 #define SM4_ROUNDS(k0, k1, k2, k3, F)   \
@@ -115,10 +152,10 @@ static uint32_t sm4_t(uint32_t x)
 {
   uint32_t t = 0;
 
-  t |= ((uint32_t)sm4_sbox[(uint8_t)(x >> 24)]) << 24;
-  t |= ((uint32_t)sm4_sbox[(uint8_t)(x >> 16)]) << 16;
-  t |= ((uint32_t)sm4_sbox[(uint8_t)(x >> 8)]) << 8;
-  t |= sm4_sbox[(uint8_t)x];
+  t |= ((uint32_t)sm4_ref_sub_byte((uint8_t)(x >> 24))) << 24;
+  t |= ((uint32_t)sm4_ref_sub_byte((uint8_t)(x >> 16))) << 16;
+  t |= ((uint32_t)sm4_ref_sub_byte((uint8_t)(x >> 8))) << 8;
+  t |= sm4_ref_sub_byte((uint8_t)x);
 
   /*
    * L linear transform
@@ -152,29 +189,3 @@ void sm4_encrypt(const uint32_t rk[SM4_KEY_SCHEDULE],
   store_u32_be(x0, ciphertext + 12);
 }
 
-#ifndef SM4_REF_NO_DECRYPT
-void sm4_decrypt(const uint32_t rk[SM4_KEY_SCHEDULE],
-    const uint8_t *ciphertext, uint8_t *plaintext)
-{
-  uint32_t x0, x1, x2, x3;
-
-  x0 = load_u32_be(ciphertext, 0);
-  x1 = load_u32_be(ciphertext, 1);
-  x2 = load_u32_be(ciphertext, 2);
-  x3 = load_u32_be(ciphertext, 3);
-
-  SM4_ROUNDS(31, 30, 29, 28, sm4_t);
-  SM4_ROUNDS(27, 26, 25, 24, sm4_t);
-  SM4_ROUNDS(23, 22, 21, 20, sm4_t);
-  SM4_ROUNDS(19, 18, 17, 16, sm4_t);
-  SM4_ROUNDS(15, 14, 13, 12, sm4_t);
-  SM4_ROUNDS(11, 10,  9,  8, sm4_t);
-  SM4_ROUNDS( 7,  6,  5,  4, sm4_t);
-  SM4_ROUNDS( 3,  2,  1,  0, sm4_t);
-
-  store_u32_be(x3, plaintext);
-  store_u32_be(x2, plaintext + 4);
-  store_u32_be(x1, plaintext + 8);
-  store_u32_be(x0, plaintext + 12);
-}
-#endif

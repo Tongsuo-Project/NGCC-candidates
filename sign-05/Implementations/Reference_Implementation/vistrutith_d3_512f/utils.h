@@ -45,24 +45,6 @@ static inline void masked_xor_u8_array(const uint8_t* a, const uint8_t* b, uint8
 // DecodeAllChall_3
 bool decode_all_chall_3(const params_t* params, uint16_t* decoded_chall, const uint8_t* chall);
 
-/* Shared 32-bit rotate-left helper */
-uint32_t rotl32_u(uint32_t x, uint8_t n);
-
-/* Load/store a 32-bit value in big-endian byte order; n is the word index (byte offset = 4*n) */
-static inline uint32_t load_u32_be(const uint8_t* b, uint32_t n)
-{
-    return ((uint32_t)b[4 * n]     << 24)
-         | ((uint32_t)b[4 * n + 1] << 16)
-         | ((uint32_t)b[4 * n + 2] <<  8)
-         |  (uint32_t)b[4 * n + 3];
-}
-
-static inline void store_u32_be(uint32_t v, uint8_t* b)
-{
-    b[0] = (uint8_t)(v >> 24);
-    b[1] = (uint8_t)(v >> 16);
-    b[2] = (uint8_t)(v >> 8);
-    b[3] = (uint8_t)(v);
-}
+/* Removed unused local rotate and big-endian word helpers. */
 
 #endif

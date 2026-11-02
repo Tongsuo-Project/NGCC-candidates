@@ -3,6 +3,15 @@
  */
 
 #include "sig_impl_internal.h"
+/* Fixed protocol and parameter-instance bytes; no terminator is absorbed.
+ * The label contains only the Chinith namespace and protocol instance.
+ * ASCII: Chinith/ublockith_d3_256f
+ */
+static const uint8_t protocol_domain[] = {
+    0x43, 0x68, 0x69, 0x6e, 0x69, 0x74, 0x68, 0x2f, 0x75, 0x62, 0x6c, 0x6f,
+    0x63, 0x6b, 0x69, 0x74, 0x68, 0x5f, 0x64, 0x33, 0x5f, 0x32, 0x35, 0x36,
+    0x66,
+};
 
 /* verbosity flag controlling status prints in this module */
 int sig_verbose = 0;
@@ -26,13 +35,15 @@ void sig_print_timing(const char* label, uint64_t ns) {
 }
 #endif
 
-// UBLOCKITH.Sign: line 3, mu = H2_0(pk||msg; 2lambda), the output length is fixed in H2 functions
+// UBLOCKITH.Sign: line 3, mu = H2_0(D_p||pk||msg; 2lambda), the output length is fixed in H2 functions
 void hash_mu(const params_t* params, uint8_t* mu, const uint8_t* owf_input,
              size_t owf_input_size, const uint8_t* owf_output, size_t owf_output_size,
              const uint8_t* msg, size_t msglen, unsigned int lambda) {
   (void)lambda;
   H2_context_t h1_ctx;
   H2_init(&h1_ctx);
+  /* Prefix the message digest with the fixed protocol domain. */
+  H2_update(&h1_ctx, protocol_domain, sizeof(protocol_domain));
   H2_update(&h1_ctx, owf_input, owf_input_size);
   H2_update(&h1_ctx, owf_output, owf_output_size);
   H2_update(&h1_ctx, msg, msglen);
@@ -47,7 +58,7 @@ void hash_iv(uint8_t* iv, const uint8_t* iv_pre, unsigned int lambda) {
   H4_final(&h4_ctx, iv);
 }
 
-// UBLOCKITH.Sign: line 4 + line 5, (r, iv) = H3(owf_key, mu, rho), owf_key = sk->owf_key
+// UBLOCKITH.Sign: line 4 + line 5, (r, iv_pre) = H3(owf_key, mu, rho), owf_key = sk->owf_key
 void hash_r_iv(const params_t* params, uint8_t* root_key, uint8_t* iv_pre,
                uint8_t* iv, const uint8_t* owf_key, const uint8_t* mu,
                const uint8_t* rho, size_t rho_size, unsigned int lambda) {
@@ -56,6 +67,8 @@ void hash_r_iv(const params_t* params, uint8_t* root_key, uint8_t* iv_pre,
   {
     H3_context_t h3_ctx;
     H3_init(&h3_ctx);
+    /* D_p is bound through mu; H3 directly absorbs
+     * only owf_key, mu and rho, followed by its existing purpose suffix. */
     H3_update(&h3_ctx, owf_key, lambda_bytes);
     H3_update(&h3_ctx, mu, lambda_bytes * 2);
     H3_update(&h3_ctx, rho, rho_size);
@@ -122,13 +135,15 @@ void hash_challenge_2_finalize(const params_t* params, uint8_t* chall_2,
 }
 
 void hash_challenge_3_init(H2_context_t* h2_ctx, const uint8_t* chall_2,
-                           const uint8_t* a_tilde, unsigned int lambda,
+                           const uint8_t* a0_tilde, const uint8_t* a_tilde, unsigned int lambda,
                            unsigned int deg) {
   const unsigned int lambda_bytes = lambda / 8;
   const unsigned int num_a_tilde = deg - 1;
 
   H2_init(h2_ctx);
   H2_update(h2_ctx, chall_2, 3 * lambda_bytes + 8);
+  /* Bind a0 separately, followed by every serialized proof coefficient. */
+  H2_update(h2_ctx, a0_tilde, lambda_bytes);
   H2_update(h2_ctx, a_tilde, lambda_bytes * num_a_tilde);
 }
 
@@ -147,10 +162,10 @@ void hash_challenge_3_final_batch4(const params_t* params, uint8_t* const chall_
 }
 
 void hash_challenge_3(const params_t* params, uint8_t* chall_3,
-                      const uint8_t* chall_2, const uint8_t* a_tilde,
+                      const uint8_t* chall_2, const uint8_t* a0_tilde, const uint8_t* a_tilde,
                       const uint8_t* ctr, unsigned int lambda) {
   H2_context_t h2_ctx;
-  hash_challenge_3_init(&h2_ctx, chall_2, a_tilde, lambda, params->deg);
+  hash_challenge_3_init(&h2_ctx, chall_2, a0_tilde, a_tilde, lambda, params->deg);
   H2_update(&h2_ctx, ctr, sizeof(uint32_t));
   H2_3_final(params, &h2_ctx, chall_3);
 }

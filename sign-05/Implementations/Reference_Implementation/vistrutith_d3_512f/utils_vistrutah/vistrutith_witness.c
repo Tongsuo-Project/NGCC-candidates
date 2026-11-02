@@ -25,10 +25,7 @@ static bf8_t vistrutith_bf_exp_238(bf8_t x) {
 }
 
 uint8_t vistrutith_inv_norm(uint8_t in) {
-  if (in == 0) {
-    return 0;
-  }
-
+  /* The fixed positive exponent maps zero to zero without a secret branch. */
   // Instead of in^{-17}, compute in^{238} in GF(2^8)^*.
   in = vistrutith_bf_exp_238(in);
   return (uint8_t)(set_bit(get_bit(in, 0), 0) ^ set_bit(get_bit(in, 6), 1) ^

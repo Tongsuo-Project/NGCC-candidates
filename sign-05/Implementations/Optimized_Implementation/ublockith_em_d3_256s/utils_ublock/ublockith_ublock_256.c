@@ -70,16 +70,18 @@ static void ublock_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_
 static inline void ublock_hash_keyspace_reduction_prover(zk_hash_SSS_3_ctx* hasher,
                                                          const uint8_t* w,
                                                          const bfSSS_t* w_tag) {
+  /* Multiply the degree-2 keyspace polynomial by X before hashing its degree-3 coefficients. */
   zk_hash_SSS_3_update(
-      hasher, bfSSS_mul(w_tag[0], w_tag[1]),
+      hasher, bfSSS_zero(), bfSSS_mul(w_tag[0], w_tag[1]),
       bfSSS_add(bfSSS_mul_bit(w_tag[0], ptr_get_bit(w, 1)),
-                bfSSS_mul_bit(w_tag[1], ptr_get_bit(w, 0))),
-      bfSSS_zero());
+                bfSSS_mul_bit(w_tag[1], ptr_get_bit(w, 0))));
 }
 
 static inline void ublock_hash_keyspace_reduction_verifier(zk_hash_SSS_ctx* hasher,
-                                                           const bfSSS_t* w_key) {
-  zk_hash_SSS_update(hasher, bfSSS_mul(w_key[0], w_key[1]));
+                                                           const bfSSS_t* w_key,
+                                                           bfSSS_t delta) {
+  /* Evaluate the same degree lift by multiplying the keyspace commitment by Delta. */
+  zk_hash_SSS_update(hasher, bfSSS_mul(bfSSS_mul(w_key[0], w_key[1]), delta));
 }
 
 static inline uint64_t bit_transpose8x8_u64(uint64_t x) {
@@ -152,15 +154,18 @@ static void ublock_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_
   const bool use_em = is_em(params);
   const unsigned int lke_bits = params->lke;
   const unsigned int lke_bytes = lke_bits / 8u;
+  /* Exclude EM's separately supplied S0 from the middle-state witness. */
+  const unsigned int enc_w_bits = use_em ? UBLOCK_BLOCK_BITS : lke_bits;
 
-  assert(params->ell >= lke_bits + UBLOCK_ENC_W_BITS);
-  ublock_hash_keyspace_reduction_prover(hasher, w, w_tag);
-
+  assert(params->ell >= enc_w_bits + UBLOCK_ENC_W_BITS);
   if (use_em) {
     assert(lke_bits == 0);
   } else {
     assert(lke_bits >= UBLOCK_KEYEXP_W_BITS);
   }
+
+  /* Include the lifted secret keyspace constraint in both EM and non-EM relations. */
+  ublock_hash_keyspace_reduction_prover(hasher, w, w_tag);
 
   uint8_t* k_bar = malloc(UBLOCK_KBAR_BITS / 8u);
   bfSSS_t* k_bar_tag = BFSSS_ALLOC(UBLOCK_KBAR_BITS);
@@ -190,7 +195,8 @@ static void ublock_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_
     constant_to_vole_SSS_prover(k_bar_tag, UBLOCK_KBAR_BITS);
 
     ublock_SSS_enc_constraints_prover(o_enc, o_enc_deg0, o_enc_deg1, o_enc_deg2, in, in_tag, out,
-                                      out_tag, w + lke_bytes, w_tag + lke_bits, k_bar, k_bar_tag);
+                                      out_tag, w + (enc_w_bits / 8u), w_tag + enc_w_bits,
+                                      k_bar, k_bar_tag);
     ublock_hash_deg3_constraints(hasher, o_enc_deg0, o_enc_deg1, o_enc_deg2, UBLOCK_ENC_O_BITS);
   } else {
     uint8_t in[UBLOCK_BLOCK];
@@ -213,6 +219,7 @@ static void ublock_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_
     ublock_SSS_expkey_constraints_prover(k_bar, k_bar_tag, o_ke, o_ke_deg0, o_ke_deg1, o_ke_deg2,
                                          w, w_tag);
     ublock_hash_deg3_constraints(hasher, o_ke_deg0, o_ke_deg1, o_ke_deg2, UBLOCK_KEYEXP_O_BITS);
+
     ublock_SSS_enc_constraints_prover(o_enc, o_enc_deg0, o_enc_deg1, o_enc_deg2, in, in_tag, out,
                                       out_tag, w + lke_bytes, w_tag + lke_bits, k_bar, k_bar_tag);
     ublock_hash_deg3_constraints(hasher, o_enc_deg0, o_enc_deg1, o_enc_deg2, UBLOCK_ENC_O_BITS);
@@ -235,15 +242,19 @@ static void ublock_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_
                                             const uint8_t* owf_out, bfSSS_t delta) {
   const bool use_em = is_em(params);
   const unsigned int lke_bits = params->lke;
+  /* Use the 256-bit EM prefix as input and pass only the middle-state keys. */
+  const unsigned int enc_w_bits = use_em ? UBLOCK_BLOCK_BITS : lke_bits;
 
-  assert(params->ell >= lke_bits + UBLOCK_ENC_W_BITS);
-  ublock_hash_keyspace_reduction_verifier(hasher, w_key);
-
+  assert(params->ell >= enc_w_bits + UBLOCK_ENC_W_BITS);
   if (use_em) {
+    /* EM has no key-expansion witness; its input occupies the first block. */
     assert(lke_bits == 0);
   } else {
     assert(lke_bits >= UBLOCK_KEYEXP_W_BITS);
   }
+
+  /* Verify the lifted secret keyspace constraint before the cipher constraints. */
+  ublock_hash_keyspace_reduction_verifier(hasher, w_key, delta);
 
   bfSSS_t* o_enc_key = BFSSS_ALLOC(UBLOCK_ENC_O_BITS);
   assert(o_enc_key);
@@ -264,7 +275,7 @@ static void ublock_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_
     ublock_build_round_keys_bytes(k_bar, owf_in);
     constant_to_vole_SSS_verifier(k_bar_key, k_bar, delta, UBLOCK_KBAR_BITS);
 
-    ublock_SSS_enc_constraints_verifier(o_enc_key, in_key, out_key, w_key + lke_bits,
+    ublock_SSS_enc_constraints_verifier(o_enc_key, in_key, out_key, w_key + enc_w_bits,
                                         k_bar_key, delta);
     ublock_hash_deg1_constraints(hasher, o_enc_key, UBLOCK_ENC_O_BITS);
 
@@ -283,6 +294,7 @@ static void ublock_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_
 
     ublock_SSS_expkey_constraints_verifier(k_bar_key, o_ke_key, w_key, delta);
     ublock_hash_deg1_constraints(hasher, o_ke_key, UBLOCK_KEYEXP_O_BITS);
+
     ublock_SSS_enc_constraints_verifier(o_enc_key, in_key, out_key, w_key + lke_bits, k_bar_key,
                                         delta);
     ublock_hash_deg1_constraints(hasher, o_enc_key, UBLOCK_ENC_O_BITS);
@@ -456,17 +468,13 @@ static void ublock_build_round_keys_bytes(uint8_t* k_bar, const uint8_t* key) {
 
 static inline void ublock_hash_SSS_3_update_inline(zk_hash_SSS_3_ctx* ctx, bfSSS_t v0, bfSSS_t v1,
                                                    bfSSS_t v2) {
-  ctx->h0[0] = bfSSS_add(bfSSS_mul(ctx->h0[0], ctx->s), v0);
-  ctx->h1[0] = bfSSS_add(bf256_mul_64(ctx->h1[0], ctx->t), v0);
-  ctx->h0[1] = bfSSS_add(bfSSS_mul(ctx->h0[1], ctx->s), v1);
-  ctx->h1[1] = bfSSS_add(bf256_mul_64(ctx->h1[1], ctx->t), v1);
-  ctx->h0[2] = bfSSS_add(bfSSS_mul(ctx->h0[2], ctx->s), v2);
-  ctx->h1[2] = bfSSS_add(bf256_mul_64(ctx->h1[2], ctx->t), v2);
+  /* Keep all coefficient updates on the shared pending-aware stream. */
+  zk_hash_SSS_3_update(ctx, v0, v1, v2);
 }
 
 static inline void ublock_hash_SSS_update_inline(zk_hash_SSS_ctx* ctx, bfSSS_t v) {
-  ctx->h0 = bfSSS_add(bfSSS_mul(ctx->h0, ctx->s), v);
-  ctx->h1 = bfSSS_add(bf256_mul_64(ctx->h1, ctx->t), v);
+  /* Match the prover stream without bypassing a pending constraint. */
+  zk_hash_SSS_update(ctx, v);
 }
 
 static void ublock_hash_deg3_constraints(zk_hash_SSS_3_ctx* hasher, const bfSSS_t* deg0,

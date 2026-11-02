@@ -1,3 +1,4 @@
+/* Remove unused internal helpers; public scheme and test entrypoints are retained. */
 #ifndef SM4_H
 #define SM4_H
 
@@ -82,10 +83,7 @@ static inline void sm4_store_be_u32(uint32_t value, uint8_t out[4])
 }
 
 /* SM4 linear transformation L used in key expansion */
-static inline uint32_t SM4_L(uint32_t B)
-{
-    return B ^ rotl32_u(B, 2) ^ rotl32_u(B, 10) ^ rotl32_u(B, 18) ^ rotl32_u(B, 24);
-}
+
 
 /* SM4 inverse of linear transformation L */
 static inline uint32_t SM4_L_inv(uint32_t C)
@@ -103,10 +101,7 @@ static inline void SM4_L_inv_bytes(const uint8_t in[4], uint8_t out[4])
 }
 
 /* SM4 linear transformation L_prime used in encryption rounds */
-static inline uint32_t SM4_L_prime(uint32_t B)
-{
-    return B ^ rotl32_u(B, 13) ^ rotl32_u(B, 23);
-}
+
 
 /* SM4 inverse of linear transformation L_prime */
 static inline uint32_t SM4_L_prime_inv(uint32_t C)
@@ -135,28 +130,8 @@ extern const uint8_t SM4_INV_AFFINE_CONST;
 uint8_t sm4_affine_byte(uint8_t x);
 uint8_t sm4_inv_affine_byte(uint8_t y);
 
-void sm4_affine_byte_tag(bf128_t *out_tag,
-                         const bf128_t *input_tag,
-                         const bf128_t *const_tag);
-
-void sm4_inv_affine_byte_tag(bf128_t *out_tag,
-                             const bf128_t *input_tag,
-                             const bf128_t *const_tag);
-
+/* Remove obsolete 128-bit tag declarations; keep the active index helper. */
 unsigned int sm4_word_tag_index(unsigned int word_bit);
-
-void SM4_L_prime_inv_bytes_tag(bf128_t *out_tag,
-                               const bf128_t *in_tag);
-
-void SM4_L_inv_bytes_tag(bf128_t *out_tag,
-                         const bf128_t *in_tag);
-
-/* Verifier-side aliases: same functions, _key suffix clarifies the operands
- * are VOLE keys (q = v + delta*w) rather than prover tags (v). */
-#define sm4_affine_byte_key          sm4_affine_byte_tag
-#define sm4_inv_affine_byte_key      sm4_inv_affine_byte_tag
-#define SM4_L_inv_bytes_key          SM4_L_inv_bytes_tag
-#define SM4_L_prime_inv_bytes_key    SM4_L_prime_inv_bytes_tag
 
 /* ================================================================== *
  *  SM4 parameters, FK[4] and CK[32]                                 *

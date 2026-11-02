@@ -23,16 +23,24 @@ typedef struct {
   size_t sd_precomp_cap;
 } vole_scratch_cache_t;
 
-static vole_scratch_cache_t g_vole_scratch = {0};
+/* Scratch belongs to one VOLE invocation and is released before return. */
+static void vole_scratch_clear(vole_scratch_cache_t* scratch) {
+  free(scratch->ui);
+  free(scratch->qtmp);
+  free(scratch->r_workspace);
+  free(scratch->sd_precomp);
+}
 
 // Reserves at least `need` bytes in the buffer, and returns a pointer to the buffer. The caller is responsible for freeing the buffer when done.
-// Work when running the signature multiple times, this can save some time on memory allocation and deallocation.
+// Reuse is confined to this invocation; no buffer survives the call.
 static uint8_t* vole_cache_reserve(uint8_t** buf, size_t* cap, size_t need) {
   if (*cap >= need) {
     return *buf;
   }
   uint8_t* p = realloc(*buf, need);
-  assert(p);
+  if (!p) {
+    abort();
+  }
   *buf = p;
   *cap = need;
   return p;
@@ -182,6 +190,7 @@ static unsigned int convert_to_vole(const params_t* params, const uint8_t* sd_pr
 
 void vole_commit(const params_t* params, const uint8_t* rootKey, const uint8_t* iv,
                  unsigned int ellhat, bavc_t* bavc, uint8_t* c, uint8_t* u, uint8_t** v) {
+  vole_scratch_cache_t scratch = {0};
   const unsigned int lambda_f     = params->lambda_f;
   const unsigned int ellhat_bytes = (ellhat + 7) / 8;
   assert(params->lambda == 128u);
@@ -201,9 +210,9 @@ void vole_commit(const params_t* params, const uint8_t* rootKey, const uint8_t* 
   const size_t ui_need = (size_t)tau * ellhat_bytes;
   const size_t r_workspace_need = (size_t)(max_num_instances + (max_num_instances >> 1)) * ellhat_bytes;
   uint8_t* ui =
-      vole_cache_reserve(&g_vole_scratch.ui, &g_vole_scratch.ui_cap, ui_need);
-  uint8_t* r_workspace = vole_cache_reserve(&g_vole_scratch.r_workspace,
-                                            &g_vole_scratch.r_workspace_cap,
+      vole_cache_reserve(&scratch.ui, &scratch.ui_cap, ui_need);
+  uint8_t* r_workspace = vole_cache_reserve(&scratch.r_workspace,
+                                            &scratch.r_workspace_cap,
                                             r_workspace_need);
 
 
@@ -234,11 +243,13 @@ void vole_commit(const params_t* params, const uint8_t* rootKey, const uint8_t* 
   }
   SIG_TEND("sign.misc_vole_correction", t_vole_correction);
 
+  vole_scratch_clear(&scratch);
 }
 
 bool vole_reconstruct(const params_t* params, uint8_t* com, uint8_t** q, const uint8_t* iv,
                       const uint8_t* chall_3, const uint8_t* decom_i, const uint8_t* c,
                       unsigned int ellhat) {
+  vole_scratch_cache_t scratch = {0};
   const unsigned int lambda       = params->lambda;
   const unsigned int lambda_f     = params->lambda_f;
   const unsigned int lambda_bytes = lambda / 8;
@@ -281,9 +292,9 @@ bool vole_reconstruct(const params_t* params, uint8_t* com, uint8_t** q, const u
   const size_t qtmp_need = (size_t)params->k * ellhat_bytes;
   const size_t r_workspace_need = (size_t)(max_num_instances + (max_num_instances >> 1)) * ellhat_bytes;
   uint8_t* qtmp =
-      vole_cache_reserve(&g_vole_scratch.qtmp, &g_vole_scratch.qtmp_cap, qtmp_need);
-  uint8_t* r_workspace = vole_cache_reserve(&g_vole_scratch.r_workspace,
-                                            &g_vole_scratch.r_workspace_cap,
+      vole_cache_reserve(&scratch.qtmp, &scratch.qtmp_cap, qtmp_need);
+  uint8_t* r_workspace = vole_cache_reserve(&scratch.r_workspace,
+                                            &scratch.r_workspace_cap,
                                             r_workspace_need);
 
 
@@ -321,9 +332,9 @@ bool vole_reconstruct(const params_t* params, uint8_t* com, uint8_t** q, const u
   }
   SIG_TEND("verify.vole_convert", t_vole_reconstruct_convert);
 
-
   free(bavc_rec.s_prg276);
   free(bavc_rec.s);
   free(i_delta);
+  vole_scratch_clear(&scratch);
   return true;
 }

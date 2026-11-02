@@ -36,19 +36,7 @@ bf8_t bf8_mul(bf8_t lhs, bf8_t rhs) {
 
 bf8_t bf8_square(bf8_t lhs) { return bf8_mul(lhs, lhs); }
 
-bf8_t bf8_inv(bf8_t in) {
-  const bf8_t t2   = bf8_square(in);
-  const bf8_t t3   = bf8_mul(in, t2);
-  const bf8_t t5   = bf8_mul(t3, t2);
-  const bf8_t t7   = bf8_mul(t5, t2);
-  const bf8_t t14  = bf8_square(t7);
-  const bf8_t t28  = bf8_square(t14);
-  const bf8_t t56  = bf8_square(t28);
-  const bf8_t t63  = bf8_mul(t56, t7);
-  const bf8_t t126 = bf8_square(t63);
-  const bf8_t t252 = bf8_square(t126);
-  return bf8_mul(t252, t2);
-}
+/* Removed unused internal bf8_inv helper. */
 
 bf64_t bf64_mul(bf64_t lhs, bf64_t rhs) {
   bf64_t result = (-(rhs & 1)) & lhs;
@@ -178,11 +166,7 @@ void bf512_sq_bit_inplace(bf512_t* tag) {
   tag[7]           = bf512_add(i6, tag[7]);
 }
 
-bf512_t bf512_byte_combine_sq(const bf512_t* x) {
-  bf512_t tmp[8];
-  bf512_sq_bit(tmp, x);
-  return bf512_byte_combine(tmp);
-}
+/* Removed unused internal bf512_byte_combine_sq helper. */
 
 bf512_t bf512_byte_combine_bits(uint8_t x) {
   bf512_t out = bf512_from_bit(get_bit(x, 0));

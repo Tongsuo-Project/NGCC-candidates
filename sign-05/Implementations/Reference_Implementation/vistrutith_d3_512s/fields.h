@@ -30,6 +30,7 @@ typedef struct {
 
 uint8_t bits_sq(uint8_t x);
 
+/* Omit unused inversion and squared-combine helpers. */
 // GF(2^8), AES polynomial x^8 + x^4 + x^3 + x + 1
 static inline bf8_t bf8_load(const uint8_t* src) { return *src; }
 static inline void bf8_store(uint8_t* dst, bf8_t src) { *dst = src; }
@@ -39,7 +40,6 @@ static inline bf8_t bf8_add(bf8_t lhs, bf8_t rhs) { return lhs ^ rhs; }
 static inline bf8_t bf8_from_bit(uint8_t bit) { return bit & 1; }
 bf8_t bf8_mul(bf8_t lhs, bf8_t rhs);
 bf8_t bf8_square(bf8_t lhs);
-bf8_t bf8_inv(bf8_t lhs);
 
 // GF(2^64)
 static inline bf64_t bf64_load(const uint8_t* src) {
@@ -84,7 +84,6 @@ bf512_t bf512_byte_combine(const bf512_t* x);
 bf512_t bf512_byte_combine_bits(uint8_t x);
 void bf512_sq_bit(bf512_t* out_tag, const bf512_t* in_tag);
 void bf512_sq_bit_inplace(bf512_t* tag);
-bf512_t bf512_byte_combine_sq(const bf512_t* x);
 bf512_t bf512_byte_combine_bits_sq(uint8_t x);
 bf512_t bf512_sum_poly(const bf512_t* xs);
 bf512_t bf512_sum_poly_bits(const uint8_t* xs);

@@ -9,6 +9,9 @@ CFLAGS = -O3 -std=c11 -pedantic -Wall -Wextra \
          -I. -I./utils_ublock -I./utils_ballet \
          -include fallbacks.h
 LDFLAGS = -lm
+
+# Default to arithmetic secret processing; keep optimized ISA flags independent.
+REF_USE_LOOKUP_TABLES ?= 0
 TIMING ?= 0
 ifeq ($(TIMING),1)
 CFLAGS += -DSIG_TIMING -D_POSIX_C_SOURCE=200809L
@@ -69,6 +72,9 @@ INSTANCE_SRCS = \
 
 SOURCES = $(COMMON_SRCS) $(UTILS_UBLOCK_SRCS) $(BALLET_SRCS) $(INSTANCE_SRCS)
 OBJECTS = $(SOURCES:.c=.o)
+
+# Append last so custom CFLAGS honor this option without suppressing ISA/NDEBUG flags.
+override CFLAGS += -DREF_USE_LOOKUP_TABLES=$(REF_USE_LOOKUP_TABLES)
 
 all: ublockith_em_d3_256s_bench
 

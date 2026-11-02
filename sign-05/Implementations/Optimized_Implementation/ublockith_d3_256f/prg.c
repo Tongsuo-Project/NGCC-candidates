@@ -1,3 +1,4 @@
+/* Retain only the PRG wrappers called by this instance and its ISA paths. */
 /*
  * SPDX-License-Identifier: MIT
  *
@@ -520,58 +521,6 @@ void prg_2_lambda_independent_batch(const uint8_t* keys, size_t key_stride, cons
   }
 }
 
-#if PRG_HAS_BALLET_AVX2
-static void prg_fixed_tweak_4keys_256_avx2_from_rk(
-    const __m256i* rk_pack, const uint8_t* iv, uint32_t tweak, uint8_t* out,
-    size_t out_stride, size_t outlen) {
-  const size_t full_blocks = outlen / UBLOCK_BLOCK;
-  const size_t rem = outlen % UBLOCK_BLOCK;
-  uint32_t ctr32_host;
-  uint64_t ctr_hi;
-  __m256i b_init;
-  __m256i c_init;
-  __m256i d_init;
-  prg_fixed_tweak_init_4keys_avx2(iv, tweak, &ctr32_host, &ctr_hi, &b_init, &c_init, &d_init);
-
-  size_t blk = 0;
-  for (; blk + 1u < full_blocks; blk += 2u) {
-    const uint32_t ctr_blk0_le = htole32(ctr32_host + (uint32_t)blk);
-    const uint32_t ctr_blk1_le = htole32(ctr32_host + (uint32_t)(blk + 1u));
-    const uint64_t a0 = (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)ctr_blk0_le);
-    const uint64_t a1 = (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)ctr_blk1_le);
-    uint8_t stream0[4][UBLOCK_BLOCK];
-    uint8_t stream1[4][UBLOCK_BLOCK];
-    prg_ballet256_enc2_4keys_avx2_ctr(rk_pack, a0, a1, b_init, c_init, d_init, stream0,
-                                       stream1);
-    for (size_t lane = 0; lane < 4; ++lane) {
-      uint8_t* out_lane = out + lane * out_stride + blk * UBLOCK_BLOCK;
-      memcpy(out_lane, stream0[lane], UBLOCK_BLOCK);
-      memcpy(out_lane + UBLOCK_BLOCK, stream1[lane], UBLOCK_BLOCK);
-    }
-  }
-
-  for (; blk < full_blocks; ++blk) {
-    const uint32_t ctr_blk_le = htole32(ctr32_host + (uint32_t)blk);
-    const uint64_t a0 = (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)ctr_blk_le);
-    uint8_t stream[4][UBLOCK_BLOCK];
-    prg_ballet256_enc1_4keys_avx2_ctr(rk_pack, a0, b_init, c_init, d_init, stream);
-    for (size_t lane = 0; lane < 4; ++lane) {
-      memcpy(out + lane * out_stride + blk * UBLOCK_BLOCK, stream[lane], UBLOCK_BLOCK);
-    }
-  }
-
-  if (rem) {
-    const uint32_t ctr_blk_le = htole32(ctr32_host + (uint32_t)full_blocks);
-    const uint64_t a0 = (uint64_t)__builtin_bswap64(ctr_hi | (uint64_t)ctr_blk_le);
-    uint8_t stream[4][UBLOCK_BLOCK];
-    prg_ballet256_enc1_4keys_avx2_ctr(rk_pack, a0, b_init, c_init, d_init, stream);
-    for (size_t lane = 0; lane < 4; ++lane) {
-      memcpy(out + lane * out_stride + full_blocks * UBLOCK_BLOCK, stream[lane], rem);
-    }
-  }
-}
-#endif
-
 void prg_2_lambda_fixed_tweak_independent_batch_with_sd(const uint8_t* keys, size_t key_stride,
                                                         const uint8_t* iv, uint32_t tweak,
                                                         uint8_t* sd_out, size_t sd_stride,
@@ -598,42 +547,6 @@ void prg_2_lambda_fixed_tweak_independent_batch_with_sd(const uint8_t* keys, siz
     const uint8_t* key_i = keys + i * key_stride;
     memcpy(sd_out + i * sd_stride, key_i, key_bytes);
     prg(key_i, iv, tweak, out + i * out_stride, seclvl, outlen);
-  }
-}
-
-void prg_2_lambda_and_fixed_tweak_independent_batch_with_sd(
-    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
-    uint32_t tweak_long, uint8_t* sd_out, size_t sd_stride, uint8_t* out_2lambda,
-    size_t out_2lambda_stride, uint8_t* out_long, size_t out_long_stride, unsigned int seclvl,
-    size_t out_long_len, size_t count) {
-  const size_t key_bytes = (size_t)(seclvl / 8u);
-  const size_t out2_len = 2u * key_bytes;
-  size_t i = 0;
-
-#if PRG_HAS_BALLET_AVX2
-  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u && ublockith_x86_has_avx2() &&
-      out_2lambda_stride >= out2_len && out_long_stride >= out_long_len && count >= 4u) {
-    for (; i + 4u <= count; i += 4u) {
-      __m256i rk_pack[RoundBallet256256 * 2];
-      prg_ballet256_genrk4_pack_avx2(keys + i * key_stride, key_stride, rk_pack);
-      for (size_t lane = 0; lane < 4u; ++lane) {
-        memcpy(sd_out + (i + lane) * sd_stride, keys + (i + lane) * key_stride, key_bytes);
-      }
-      prg_fixed_tweak_4keys_256_avx2_from_rk(
-          rk_pack, iv, tweak_2lambda, out_2lambda + i * out_2lambda_stride,
-          out_2lambda_stride, out2_len);
-      prg_fixed_tweak_4keys_256_avx2_from_rk(
-          rk_pack, iv, tweak_long, out_long + i * out_long_stride, out_long_stride,
-          out_long_len);
-    }
-  }
-#endif
-
-  for (; i < count; ++i) {
-    const uint8_t* key_i = keys + i * key_stride;
-    memcpy(sd_out + i * sd_stride, key_i, key_bytes);
-    prg(key_i, iv, tweak_2lambda, out_2lambda + i * out_2lambda_stride, seclvl, out2_len);
-    prg(key_i, iv, tweak_long, out_long + i * out_long_stride, seclvl, out_long_len);
   }
 }
 
@@ -674,54 +587,6 @@ void prg_2_lambda_fixed_tweak_independent_batch_with_sd_xor_map(
   }
 }
 
-void prg_2_lambda_and_fixed_tweak_independent_batch_with_sd_xor_map(
-    const uint8_t* keys, size_t key_stride, const uint8_t* iv, uint32_t tweak_2lambda,
-    uint32_t tweak_long, uint8_t* sd_out, size_t sd_stride, size_t sd_index_base,
-    size_t sd_index_xor, uint8_t* out_2lambda, size_t out_2lambda_stride, uint8_t* out_long,
-    size_t out_long_stride, unsigned int seclvl, size_t out_long_len, size_t count) {
-  const size_t key_bytes = (size_t)(seclvl / 8u);
-  const size_t out2_len = 2u * key_bytes;
-  size_t i = 0;
-
-#if PRG_HAS_BALLET_AVX2
-  if (PRG_HAS_4KEY_FIXED_TWEAK_AVX2 && seclvl == 256u && ublockith_x86_has_avx2() &&
-      out_2lambda_stride >= out2_len && out_long_stride >= out_long_len && count >= 4u) {
-    for (; i + 4u <= count; i += 4u) {
-      __m256i rk_pack[RoundBallet256256 * 2];
-      uint8_t long_tmp[4u * out_long_len];
-      prg_ballet256_genrk4_pack_avx2(keys + i * key_stride, key_stride, rk_pack);
-      for (size_t lane = 0; lane < 4u; ++lane) {
-        const size_t idx = i + lane;
-        uint8_t* sd_slot =
-            prg_sd_xor_map_slot(sd_out, sd_stride, sd_index_base + idx, sd_index_xor);
-        memcpy(sd_slot, keys + idx * key_stride, key_bytes);
-      }
-      prg_fixed_tweak_4keys_256_avx2_from_rk(
-          rk_pack, iv, tweak_2lambda, out_2lambda + i * out_2lambda_stride,
-          out_2lambda_stride, out2_len);
-      prg_fixed_tweak_4keys_256_avx2_from_rk(
-          rk_pack, iv, tweak_long, long_tmp, out_long_len, out_long_len);
-      for (size_t lane = 0; lane < 4u; ++lane) {
-        const size_t idx = i + lane;
-        uint8_t* out_long_slot =
-            prg_sd_xor_map_slot(out_long, out_long_stride, sd_index_base + idx, sd_index_xor);
-        memcpy(out_long_slot, long_tmp + lane * out_long_len, out_long_len);
-      }
-    }
-  }
-#endif
-
-  for (; i < count; ++i) {
-    const uint8_t* key_i = keys + i * key_stride;
-    uint8_t* sd_slot = prg_sd_xor_map_slot(sd_out, sd_stride, sd_index_base + i, sd_index_xor);
-    uint8_t* out_long_slot =
-        prg_sd_xor_map_slot(out_long, out_long_stride, sd_index_base + i, sd_index_xor);
-    memcpy(sd_slot, key_i, key_bytes);
-    prg(key_i, iv, tweak_2lambda, out_2lambda + i * out_2lambda_stride, seclvl, out2_len);
-    prg(key_i, iv, tweak_long, out_long_slot, seclvl, out_long_len);
-  }
-}
-
 void prg_fixed_tweak_independent_batch(const uint8_t* keys, size_t key_stride, const uint8_t* iv,
                                        uint32_t tweak, uint8_t* out, size_t out_stride,
                                        unsigned int seclvl, size_t outlen, size_t count) {
@@ -740,8 +605,3 @@ void prg_fixed_tweak_independent_batch(const uint8_t* keys, size_t key_stride, c
   }
 }
 
-void prg_4_lambda(const uint8_t* key, const uint8_t* iv, uint32_t tweak, uint8_t* out,
-                  unsigned int seclvl) {
-  const size_t outlen = 4u * (size_t)(seclvl / 8u);
-  prg(key, iv, tweak, out, seclvl, outlen);
-}

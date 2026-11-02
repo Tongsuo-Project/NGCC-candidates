@@ -54,12 +54,16 @@ Default build is release:
 make vistrutith_d3_512f_bench
 ```
 
+`make` and `make REF_USE_LOOKUP_TABLES=0` use the default table-free
+Reference cipher/proof helpers. `make REF_USE_LOOKUP_TABLES=1` explicitly
+selects the legacy lookup-table path.
+
 Build settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `NDEBUG` | `1` | `1`: release (`-O3`), `0`: keep base `-O2` flags |
-| `SBOX_TABLE` | enabled | Fixed in `CFLAGS`; uses the portable table-based Vistrutah S-box path |
+| `NDEBUG` | `1` | `1`: release (`-O3 -DNDEBUG` with LTO), `0`: keep base `-O2` flags |
+| `REF_USE_LOOKUP_TABLES` | `0` | `0`: table-free cipher/proof helpers; `1`: legacy lookup-table path |
 
 ## Run
 
@@ -67,15 +71,33 @@ Benchmark:
 
 ```bash
 ./vistrutith_d3_512f_bench
-./vistrutith_d3_512f_bench 100
 ./vistrutith_d3_512f_bench 100 0
 ./vistrutith_d3_512f_bench 100 8
+./vistrutith_d3_512f_bench 100 0 --all
 ```
 
-`./vistrutith_d3_512f_bench` runs 100 fixed-56-byte sign/verify iterations by
-default. The optional second argument is `MESSAGE_STEP`; use `0` explicitly for
-fixed-56-byte table runs, and `8` for increasing message lengths
-`56, 64, 72, ...`. This pure-C Reference path can be slow.
+`ITERATIONS` defaults to `100` and is the actual number of KeyGen/Sign/Verify
+combinations. There is no built-in warmup. The optional `MESSAGE_STEP` defaults
+to `0`; message lengths are `56 + MESSAGE_STEP*i` bytes. Messages are
+deterministic ASCII strings beginning with
+`Chinith sm4th ublockith vistrutith 56-byte bench msg v1.`.
+
+The default table has `operation`, `mean ms/op`, `mean cycles/op` and
+`mean Mcycles/op` columns for KeyGen, Sign and Verify, followed by public-key,
+secret-key and signature sizes in bytes. Milliseconds use `clock()` process
+user-plus-system CPU time; cycles are user-mode hardware CPU cycles, not TSC
+ticks or a frequency conversion. Mcycles are cycles divided by 1,000,000.
+Unavailable cycle measurements show `N/A` and a reason.
+
+`--all` runs speed measurement in a fresh process. On Linux, it then starts
+a separate fresh process for memory measurement. Speed uses the requested
+`ITERATIONS`; memory
+includes all three complete API combinations. It also reports key/signature
+sizes and the maximum child-process RSS observed at initial and syscall stops.
+This includes initialization and all memory iterations and excludes the
+observer. It is process memory, not a separate peak for each API. Memory-run
+timings are discarded. RSS observation requires Linux; on macOS `--all`
+completes successfully after speed measurement and reports `N/A` for RSS.
 
 KAT:
 
@@ -83,5 +105,17 @@ KAT:
 bash run_kat_sig.sh
 ```
 
-`run_kat_sig.sh` builds `KAT_SIG` with `NDEBUG=1`, runs it, and writes output to
-`output/`. Reference Vistrutith KAT generation can take several minutes.
+KAT output is written to `output/KAT_SIG_vistrutith_d3_512f.txt`.
+The script builds `KAT_SIG` with `NDEBUG=1`.
+To generate KATs with an explicit lookup mode, build and run the target directly:
+
+```bash
+make NDEBUG=1 REF_USE_LOOKUP_TABLES=1 KAT_SIG
+./KAT_SIG
+```
+
+From the repository root, compare Optimized/Reference/Test_Vectors hashes with:
+
+```bash
+bash Chinith/Implementations/check_kat_hash.sh --variant vistrutith_d3_512f
+```

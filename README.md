@@ -83,7 +83,7 @@ The tree currently has **76** scheme directories (41 KEM, 33 signature, 2 key ex
 | `sign-02` | BiT | Latest author revision | [BiT-20261012.zip](https://light-lattice.org/bit/implementations/20261012/BiT-20261012.zip) | 2026-10-20 | `f798dc3ca559` |
 | `sign-03` | cedrus+c | Latest author revision | [GitHub commit 81e737ebee39](https://github.com/zhong-h/CEDRUSPLUSC-SM3/commit/81e737ebee3985c19ea052a6f958d536fd6d44ca) | 2026-10-20 | `5ddc4cd733d2` |
 | `sign-04` | cedrus-α | Official Round-1 package | [cedrus-α.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/cedrus-%CE%B1.zip) | 2026-10-20 | `b90559ca94bd` |
-| `sign-05` | Chinith | Official Round-1 package | [Chinith.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/Chinith.zip) | 2026-10-20 | `4d31ba3fe871` |
+| `sign-05` | Chinith | Latest author revision | [GitHub commit a07ae2984e4f](https://github.com/AntCPLab/Chinith/commit/a07ae2984e4f8b051afe3a40563c639d0d03d0b4) | 2026-11-02 | `36937240efd8` |
 | `sign-06` | COMPASS-SIG | Official Round-1 package | [COMPASS-SIG.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/COMPASS-SIG.zip) | 2026-10-20 | `ce88066506fe` |
 | `sign-07` | CS | Official Round-1 package | [CS.zip](https://www.niccs.org.cn/niccs/Proposal/Public-Key%20Cryptographic%20Algorithms/Round%201%20candidates/CS.zip) | 2026-10-20 | `c790d31cd4a2` |
 | `sign-08` | DARTS | Latest author revision | [GitHub commit 98687cf6910c](https://github.com/MathEternal/DARTS-NGCC/commit/98687cf6910c1409d188464c9ceff69cbf409cc4) | 2026-10-31 | `6974090d6b1c` |

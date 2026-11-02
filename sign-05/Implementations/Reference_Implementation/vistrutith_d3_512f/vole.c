@@ -42,14 +42,21 @@ typedef struct {
   size_t r_workspace_cap;
 } vole_scratch_cache_t;
 
-static vole_scratch_cache_t g_vole_scratch = {0};
+/* Scratch belongs to one VOLE invocation and is released before return. */
+static void vole_scratch_clear(vole_scratch_cache_t* scratch) {
+  free(scratch->ui);
+  free(scratch->qtmp);
+  free(scratch->r_workspace);
+}
 
 static uint8_t* vole_cache_reserve(uint8_t** buf, size_t* cap, size_t need) {
   if (*cap >= need) {
     return *buf;
   }
   uint8_t* p = realloc(*buf, need);
-  assert(p);
+  if (!p) {
+    abort();
+  }
   *buf = p;
   *cap = need;
   return p;
@@ -182,6 +189,7 @@ static unsigned int convert_to_vole(const params_t* params, const uint8_t* iv,
 
 void vole_commit(const params_t* params, const uint8_t* rootKey, const uint8_t* iv,
                  unsigned int ellhat, bavc_t* bavc, uint8_t* c, uint8_t* u, uint8_t** v) {
+  vole_scratch_cache_t scratch = {0};
   const unsigned int lambda       = params->lambda;
   const unsigned int lambda_bytes = lambda / 8;
   const unsigned int ellhat_bytes = (ellhat + 7) / 8;
@@ -206,9 +214,9 @@ void vole_commit(const params_t* params, const uint8_t* rootKey, const uint8_t* 
   const size_t ui_need = (size_t)tau * ellhat_bytes;
   const size_t r_workspace_need = (size_t)scratch_instances * ellhat_bytes;
   uint8_t* ui =
-      vole_cache_reserve(&g_vole_scratch.ui, &g_vole_scratch.ui_cap, ui_need);
-  uint8_t* r_workspace = vole_cache_reserve(&g_vole_scratch.r_workspace,
-                                            &g_vole_scratch.r_workspace_cap,
+      vole_cache_reserve(&scratch.ui, &scratch.ui_cap, ui_need);
+  uint8_t* r_workspace = vole_cache_reserve(&scratch.r_workspace,
+                                            &scratch.r_workspace_cap,
                                             r_workspace_need);
 
 #ifdef SIG_TIMING
@@ -270,11 +278,13 @@ void vole_commit(const params_t* params, const uint8_t* rootKey, const uint8_t* 
   vole_print_timing("detail.sign.vole_commit.post", dt_post);
   vole_print_timing("detail.sign.vole_commit.total", dt_total);
 #endif
+  vole_scratch_clear(&scratch);
 }
 
 bool vole_reconstruct(const params_t* params, uint8_t* com, uint8_t** q, const uint8_t* iv,
                       const uint8_t* chall_3, const uint8_t* decom_i, const uint8_t* c,
                       unsigned int ellhat) {
+  vole_scratch_cache_t scratch = {0};
   const unsigned int lambda       = params->lambda;
   const unsigned int lambda_bytes = lambda / 8;
   const unsigned int ellhat_bytes = (ellhat + 7) / 8;
@@ -323,9 +333,9 @@ bool vole_reconstruct(const params_t* params, uint8_t* com, uint8_t** q, const u
   const size_t qtmp_need = (size_t)params->k * ellhat_bytes;
   const size_t r_workspace_need = (size_t)scratch_instances * ellhat_bytes;
   uint8_t* qtmp =
-      vole_cache_reserve(&g_vole_scratch.qtmp, &g_vole_scratch.qtmp_cap, qtmp_need);
-  uint8_t* r_workspace = vole_cache_reserve(&g_vole_scratch.r_workspace,
-                                            &g_vole_scratch.r_workspace_cap,
+      vole_cache_reserve(&scratch.qtmp, &scratch.qtmp_cap, qtmp_need);
+  uint8_t* r_workspace = vole_cache_reserve(&scratch.r_workspace,
+                                            &scratch.r_workspace_cap,
                                             r_workspace_need);
 
 #ifdef SIG_TIMING
@@ -402,5 +412,6 @@ bool vole_reconstruct(const params_t* params, uint8_t* com, uint8_t** q, const u
 
   free(bavc_rec.s);
   free(i_delta);
+  vole_scratch_clear(&scratch);
   return true;
 }

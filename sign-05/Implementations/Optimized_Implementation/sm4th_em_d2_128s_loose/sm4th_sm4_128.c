@@ -1,6 +1,7 @@
+#include "macros.h"
+#include "compat.h"
 #include "sm4th_sm4_128.h"
 #include "fields.h"
-#include "macros.h"
 #include "vole.h"
 #include "utils.h"
 #include "universal_hashing.h"
@@ -44,8 +45,6 @@
 #define zk_hash_SSS_init zk_hash_128_init
 #define zk_hash_SSS_update zk_hash_128_update
 
-
-
 /* ------------------------------------------------------------------ */
 /* Forward declarations                                                  */
 /* ------------------------------------------------------------------ */
@@ -57,9 +56,12 @@ static void constant_to_vole_SSS_verifier(bfSSS_t* key, const uint8_t* val, bfSS
 /* Prover-side tag for any public constant is always zero.
  * Use this shared zero array instead of calling constant_to_vole_SSS_prover every round. */
 static const bfSSS_t ZERO_TAG_8[8];  /* zero-initialised by C */
+#if REF_USE_LOOKUP_TABLES
 static bfSSS_t g_sm4_byte_combine_bits_lut[256];
+#endif
+#if REF_USE_LOOKUP_TABLES
 static bfSSS_t g_sm4_byte_combine_bits_sq_lut[256];
-static int g_sm4_byte_combine_bits_lut_ready = 0;
+#endif
 static void sm4_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx* hasher,
                                        const uint8_t* w, const bfSSS_t* w_tag,
                                        const uint8_t* owf_in, const uint8_t* owf_out);
@@ -126,23 +128,39 @@ static inline uint64_t bit_transpose8x8_u64(uint64_t x) {
   return x;
 }
 
-static void sm4_byte_combine_bits_lut_ensure(void) {
-  if (g_sm4_byte_combine_bits_lut_ready) {
-    return;
-  }
+#if REF_USE_LOOKUP_TABLES
+static void sm4_byte_combine_bits_lut_ensure_initialize(void) {
   for (unsigned int i = 0; i < 256u; ++i) {
     g_sm4_byte_combine_bits_lut[i] = bfSSS_byte_combine_bits((uint8_t)i);
     g_sm4_byte_combine_bits_sq_lut[i] = bfSSS_byte_combine_bits_sq((uint8_t)i);
   }
-  g_sm4_byte_combine_bits_lut_ready = 1;
+}
+#endif
+
+/* Serialize first initialization and publish the read-only table. */
+static void sm4_byte_combine_bits_lut_ensure(void) {
+#if REF_USE_LOOKUP_TABLES
+  static ref_once_t once = REF_ONCE_INIT;
+  ref_call_once(&once, sm4_byte_combine_bits_lut_ensure_initialize);
+#else
+  /* Arithmetic path has no mutable lookup cache to initialize. */
+#endif
 }
 
 static inline bfSSS_t sm4_byte_combine_bits_lut(uint8_t x) {
+#if REF_USE_LOOKUP_TABLES
   return g_sm4_byte_combine_bits_lut[x];
+#else
+  return bfSSS_byte_combine_bits(x);
+#endif
 }
 
 static inline bfSSS_t sm4_byte_combine_bits_sq_lut(uint8_t x) {
+#if REF_USE_LOOKUP_TABLES
   return g_sm4_byte_combine_bits_sq_lut[x];
+#else
+  return bfSSS_byte_combine_bits_sq(x);
+#endif
 }
 
 // OWF PROVER
@@ -166,13 +184,10 @@ void sm4_128_prover(const params_t* params, uint8_t* a0_tilde, uint8_t* a1_tilde
   // The input of u is of length 3 * lambda + B bits, but we only need 2 * lambda bits by using the bfSSS_sum_poly_bits function.
   // bfSSS_sum_poly_bits: ToField u's **first** lambda bits to a field element.
   bfSSS_t bf_u_star_0 = bfSSS_sum_poly_bits(u);
-  // ToField u's **next** lambda bits to a field element.
 
   // ::8-9
   // bfSSS_sum_poly: ToField v's lambda ZK-mask bits to a field element.
   bfSSS_t bf_v_star_0 = bfSSS_sum_poly(w_tag + ell);
-  // ToField v's next lambda ZK-mask bits to a field element.
-  bfSSS_t bf_v_star_1 = bfSSS_sum_poly(w_tag + ell + SM4TH_LAMBDA);
 
   // Step: 13-18
   zk_hash_SSS_3_ctx hasher;
@@ -181,9 +196,8 @@ void sm4_128_prover(const params_t* params, uint8_t* a0_tilde, uint8_t* a1_tilde
 
   sm4_SSS_constraints_prover(params, &hasher, w, w_tag, owf_in, owf_out);
 
-  // TAG: update to a0_tilde, a1_tilde, but it should still work as before due to the compatility of Deg2To3.
-  zk_hash_SSS_3_finalize(a0_tilde, a1_tilde, &hasher, bf_v_star_0,
-                         bfSSS_add(bf_v_star_1, bf_u_star_0));
+  /* Degree-two proofs use only v*_0 and u*_0 as coefficient masks. */
+  zk_hash_SSS_3_finalize(a0_tilde, a1_tilde, &hasher, bf_v_star_0, bf_u_star_0);
 
 }
 
@@ -204,7 +218,7 @@ static void sm4_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx
   const unsigned int blocksize = SM4_BLOCK_SIZE * 8; // in bits
   const bool use_em     = is_em(params);
 
-  // Secret-witness keyspace reduction: w[0] * w[1] = 0.
+  /* Retain the EM degree-two keyspace constraint on secret witness bits. */
   zk_hash_SSS_3_update(hasher, bfSSS_mul(w_tag[0], w_tag[1]),
                        bfSSS_add(bfSSS_mul_bit(w_tag[0], ptr_get_bit(w, 1)),
                                  bfSSS_mul_bit(w_tag[1], ptr_get_bit(w, 0))));
@@ -792,10 +806,8 @@ void sm4_128_verifier(const params_t* params, uint8_t* a0_tilde, const uint8_t* 
   column_to_row_major_and_shrink_V_SSS(q_key, Q, ell);
 
   // ::7-9
-  // q_star = q_star_0 + delta * q_star_1.
-  bfSSS_t q_star_0 = bfSSS_sum_poly(q_key + ell);
-  bfSSS_t q_star_1 = bfSSS_sum_poly(q_key + ell + SM4TH_LAMBDA);
-  bfSSS_t q_star   = bfSSS_add(q_star_0, bfSSS_mul(q_star_1, bf_delta));
+  /* Match the degree-two prover by using only q*_0. */
+  bfSSS_t q_star = bfSSS_sum_poly(q_key + ell);
 
   // ::13-14
   zk_hash_SSS_ctx b_ctx;
@@ -828,7 +840,7 @@ static void sm4_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx
   const unsigned int blocksize = SM4_BLOCK_SIZE * 8; // in bits
   const bool use_em     = is_em(params);
 
-  // Secret-witness keyspace reduction: w[0] * w[1] = 0.
+  /* Verify the same secret-input keyspace constraint without a public-x filter. */
   zk_hash_SSS_update(hasher, bfSSS_mul(w_key[0], w_key[1]));
 
   // ::6

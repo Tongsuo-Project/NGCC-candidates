@@ -27,6 +27,15 @@ which uses SPDX-License-Identifier: MIT.
 #define SK_KEY(sk) (&sk[16])
 
 int sm4th_d3_128s_tight_keygen(uint8_t* pk, uint8_t* sk, const uint8_t* sk_key, const uint8_t* sk_input) {
+  /* Validate raw KeyGen buffers before reading or writing them. */
+  if (!pk || !sk || !sk_key || !sk_input) {
+    return -1;
+  }
+  /* Explicit-key generation uses the same secret-key restriction. */
+  if ((ptr_get_bit(sk_key, 0) & ptr_get_bit(sk_key, 1)) != 0) {
+    return 1;
+  }
+
   memcpy(SK_KEY(sk), sk_key, 128 / 8);
   memcpy(SK_INPUT(sk), sk_input, 16);
 
@@ -44,6 +53,10 @@ int sm4th_d3_128s_tight_unpack_private_key(sm4th_d3_128s_tight_unpacked_private_
   if (!unpacked_sk || !sk) {
     return -1;
   }
+  /* Reject an imported secret outside the proved keyspace. */
+  if ((ptr_get_bit(SK_KEY(sk), 0) & ptr_get_bit(SK_KEY(sk), 1)) != 0) {
+    return 1;
+  }
 
   // copy OWF input and key to unpacked_sk
   memcpy(unpacked_sk->owf_input, SK_INPUT(sk), sizeof(unpacked_sk->owf_input));
@@ -56,7 +69,10 @@ int sm4th_d3_128s_tight_unpack_private_key(sm4th_d3_128s_tight_unpacked_private_
   const params_t* params = sm4th_params_d3_s();
   const unsigned int witness_bytes = params->ell / 8;
   unpacked_sk->witness = malloc(witness_bytes);
-  assert(unpacked_sk->witness);
+  /* Return safely when witness allocation fails in release builds. */
+  if (!unpacked_sk->witness) {
+    return -1;
+  }
   sm4_extend_witness(params, unpacked_sk->witness, unpacked_sk->owf_key, unpacked_sk->owf_input);
 
   return 0;
@@ -79,12 +95,14 @@ int sm4th_d3_128s_tight_validate_keypair(const uint8_t* pk, const uint8_t* sk) {
   return timingsafe_bcmp(pk_check, pk, sizeof(pk_check)) == 0 ? 0 : 2;
 }
 
+/* Reject messages above the specification limit before processing them. */
 int sm4th_d3_128s_tight_sign_with_randomness(const uint8_t* sk, const uint8_t* message, size_t message_len, const uint8_t* rho, size_t rho_len, uint8_t* signature, size_t* signature_len) {
-  if (!sk || !signature || !signature_len || *signature_len < SM4TH_D3_S_TIGHT_SIGNATURE_SIZE || (!rho && rho_len) || (!message && message_len)) {
+  if (!sk || !signature || !signature_len || *signature_len < SM4TH_D3_S_TIGHT_SIGNATURE_SIZE || !rho || rho_len != SIGN_RANDOMNESS_BYTES || (!message && message_len) || message_len > (UINT64_C(1) << 60)) {
     return -1;
   }
 
-  sm4th_d3_128s_tight_unpacked_private_key_t unpacked_sk;
+  /* Initialize cleanup state before validating an unpacked private key. */
+  sm4th_d3_128s_tight_unpacked_private_key_t unpacked_sk = {0};
   int ret = sm4th_d3_128s_tight_unpack_private_key(&unpacked_sk, sk);
   // as long as ret!=0, this would enter into the if branch
   // if ret==0, then continue to sign
@@ -99,20 +117,30 @@ int sm4th_d3_128s_tight_sign_with_randomness(const uint8_t* sk, const uint8_t* m
 }
 
 int sm4th_d3_128s_tight_unpacked_sign_with_randomness(const sm4th_d3_128s_tight_unpacked_private_key_t* sk, const uint8_t* message, size_t message_len, const uint8_t* rho, size_t rho_len, uint8_t* signature, size_t* signature_len) {
-  if (!sk || !signature || !signature_len || *signature_len < SM4TH_D3_S_TIGHT_SIGNATURE_SIZE || (!message && message_len)) {
+  /* Split signing requires an allocated witness and valid rho input. */
+  if (!sk || !sk->witness || !rho || rho_len != SIGN_RANDOMNESS_BYTES || !signature || !signature_len || *signature_len < SM4TH_D3_S_TIGHT_SIGNATURE_SIZE || (!message && message_len) || message_len > (UINT64_C(1) << 60)) {
     return -1;
+  }
+  /* Split signing must also reject forbidden imported secret bits. */
+  if ((ptr_get_bit(sk->owf_key, 0) & ptr_get_bit(sk->owf_key, 1)) != 0) {
+    return 1;
   }
 
   const params_t* params = sm4th_params_d3_s();
-  sm4th_sign(params, signature, message, message_len, sk->owf_key, sk->owf_input, sk->owf_output,
+  /* Propagate counter exhaustion through the public signing API. */
+  const int sign_result = sm4th_sign(params, signature, message, message_len, sk->owf_key, sk->owf_input, sk->owf_output,
              sk->witness, rho, rho_len);
+  if (sign_result != 0) {
+    *signature_len = 0;
+    return sign_result;
+  }
   *signature_len = SM4TH_D3_S_TIGHT_SIGNATURE_SIZE;
 
   return 0;
 }
 
 int sm4th_d3_128s_tight_verify(const uint8_t* pk, const uint8_t* message, size_t message_len, const uint8_t* signature, size_t signature_len) {
-  if (!pk || !signature || signature_len != SM4TH_D3_S_TIGHT_SIGNATURE_SIZE || (!message && message_len)) {
+  if (!pk || !signature || signature_len != SM4TH_D3_S_TIGHT_SIGNATURE_SIZE || (!message && message_len) || message_len > (UINT64_C(1) << 60)) {
     return -1;
   }
 

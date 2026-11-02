@@ -6,9 +6,12 @@
 
 #include "sm4_ref.h"
 #include <x86intrin.h>
+#include <string.h>
 
 // Encrypt 4 blocks (64 bytes) in ECB mode
 
+/* GCC and Clang must enable this ISA independently of NDEBUG. */
+__attribute__((target("ssse3,aes")))
 void sm4_encrypt4_opt(const uint32_t rk[32], const void *src, const void *dst)
 {
     // nibble mask
@@ -45,10 +48,11 @@ void sm4_encrypt4_opt(const uint32_t rk[32], const void *src, const void *dst)
 
     __m128i x, y, t0, t1, t2, t3;
 
-    uint32_t k, *p32, v[4] __attribute__((aligned(0x10)));
+    uint32_t k, p32[16], v[4] __attribute__((aligned(0x10)));
     int i;
 
-    p32 = (uint32_t *) src;
+    /* Byte API buffers, including 162-byte lanes, need no word alignment. */
+    memcpy(p32, src, sizeof(p32));
     t0 = _mm_set_epi32(p32[12], p32[ 8], p32[ 4], p32[ 0]);
     t0 = _mm_shuffle_epi8(t0, flp);
     t1 = _mm_set_epi32(p32[13], p32[ 9], p32[ 5], p32[ 1]);
@@ -144,8 +148,6 @@ void sm4_encrypt4_opt(const uint32_t rk[32], const void *src, const void *dst)
 
 #endif
 
-    p32 = (uint32_t *) dst;
-
     _mm_store_si128((__m128i *) v, _mm_shuffle_epi8(t3, flp));
     p32[ 0] = v[0];
     p32[ 4] = v[1];
@@ -169,4 +171,6 @@ void sm4_encrypt4_opt(const uint32_t rk[32], const void *src, const void *dst)
     p32[ 7] = v[1];
     p32[11] = v[2];
     p32[15] = v[3];
+    /* Copy the gathered words back without an aligned-pointer cast. */
+    memcpy((void*)dst, p32, sizeof(p32));
 }

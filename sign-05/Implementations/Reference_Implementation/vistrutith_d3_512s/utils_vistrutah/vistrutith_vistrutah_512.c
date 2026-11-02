@@ -48,15 +48,17 @@ static inline void vistrutith_hash_keyspace_reduction_prover(zk_hash_SSS_3_ctx* 
                                                              const uint8_t* w,
                                                              const bfSSS_t* w_tag) {
   zk_hash_SSS_3_update(
-      hasher, bfSSS_mul(w_tag[0], w_tag[1]),
+      /* lift the keyspace product from degree 2 to degree 3 by X. */
+      hasher, bfSSS_zero(), bfSSS_mul(w_tag[0], w_tag[1]),
       bfSSS_add(bfSSS_mul_bit(w_tag[0], ptr_get_bit(w, 1)),
-                bfSSS_mul_bit(w_tag[1], ptr_get_bit(w, 0))),
-      bfSSS_zero());
+                bfSSS_mul_bit(w_tag[1], ptr_get_bit(w, 0))));
 }
 
 static inline void vistrutith_hash_keyspace_reduction_verifier(zk_hash_SSS_ctx* hasher,
-                                                               const bfSSS_t* w_key) {
-  zk_hash_SSS_update(hasher, bfSSS_mul(w_key[0], w_key[1]));
+                                                               const bfSSS_t* w_key,
+                                                               bfSSS_t delta) {
+  /* evaluate the prover's degree-3 lift with the matching Delta factor. */
+  zk_hash_SSS_update(hasher, bfSSS_mul(delta, bfSSS_mul(w_key[0], w_key[1])));
 }
 
 _Static_assert(VISTRUTITH_ENC_CSTRNTS_NORM_LEN == VISTRUTITH_ENC_CSTRNTS_IO_LEN,
@@ -118,57 +120,84 @@ void vistrutith_512_verifier(const params_t* params, uint8_t* a0_tilde, const ui
   bfSSS_store(a0_tilde, a0);
 }
 
+/* Large proof arrays belong to one heap workspace. */
+typedef struct {
+  bfSSS_t in_tag[VISTRUTITH_BLOCK_BITS];
+  bfSSS_t out_tag[VISTRUTITH_BLOCK_BITS];
+  vistrutith_deg3_t z_norm[VISTRUTITH_ENC_CSTRNTS_NORM_LEN];
+  vistrutith_deg3_t z_io0[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
+  vistrutith_deg3_t z_io1[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
+} vistrutith_proof_prover_workspace_t;
+
 static void vistrutith_SSS_constraints_prover(const params_t* params, zk_hash_SSS_3_ctx* hasher,
                                               const uint8_t* w, const bfSSS_t* w_tag,
                                               const uint8_t* owf_in, const uint8_t* owf_out) {
+  vistrutith_proof_prover_workspace_t* workspace = malloc(sizeof(*workspace));
+  if (!workspace) {
+    abort();
+  }
+
   (void)params;
 
-  bfSSS_t in_tag[VISTRUTITH_BLOCK_BITS];
-  bfSSS_t out_tag[VISTRUTITH_BLOCK_BITS];
-  bfSSS_t z_norm_val[VISTRUTITH_ENC_CSTRNTS_NORM_LEN];
-  bfSSS_t z_norm_tag[VISTRUTITH_ENC_CSTRNTS_NORM_LEN];
-  bfSSS_t z_io0_val[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
-  bfSSS_t z_io0_tag[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
-  bfSSS_t z_io1_val[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
-  bfSSS_t z_io1_tag[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
 
-  constant_to_vole_SSS_prover(in_tag, VISTRUTITH_BLOCK_BITS);
-  constant_to_vole_SSS_prover(out_tag, VISTRUTITH_BLOCK_BITS);
+  constant_to_vole_SSS_prover(workspace->in_tag, VISTRUTITH_BLOCK_BITS);
+  constant_to_vole_SSS_prover(workspace->out_tag, VISTRUTITH_BLOCK_BITS);
   vistrutith_hash_keyspace_reduction_prover(hasher, w, w_tag);
 
   vistrutith_enc_constraints_prover(
-      z_norm_val, z_norm_tag, z_io0_val, z_io0_tag, z_io1_val, z_io1_tag, owf_in, in_tag,
-      owf_out, out_tag, w, w_tag);
+      workspace->z_norm, workspace->z_io0, workspace->z_io1, owf_in, workspace->in_tag,
+      owf_out, workspace->out_tag, w, w_tag);
 
+  /* clarify-261002-1000_xhs1.txt item 2: hash each entry's coefficients in K || norm || IO0 || IO1 order. */
   for (unsigned int i = 0; i < VISTRUTITH_ENC_CSTRNTS_NORM_LEN; ++i) {
-    zk_hash_SSS_3_update(hasher, z_norm_tag[i], z_io0_tag[i], z_io1_tag[i]);
+    zk_hash_SSS_3_update(hasher, workspace->z_norm[i].c[0], workspace->z_norm[i].c[1], workspace->z_norm[i].c[2]);
   }
+  for (unsigned int i = 0; i < VISTRUTITH_ENC_CSTRNTS_IO_LEN; ++i) {
+    zk_hash_SSS_3_update(hasher, workspace->z_io0[i].c[0], workspace->z_io0[i].c[1], workspace->z_io0[i].c[2]);
+  }
+  for (unsigned int i = 0; i < VISTRUTITH_ENC_CSTRNTS_IO_LEN; ++i) {
+    zk_hash_SSS_3_update(hasher, workspace->z_io1[i].c[0], workspace->z_io1[i].c[1], workspace->z_io1[i].c[2]);
+  }
+  free(workspace);
 }
 
-static void vistrutith_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx* hasher,
-                                                const bfSSS_t* w_key, const uint8_t* owf_in,
-                                                const uint8_t* owf_out, bfSSS_t delta) {
-  (void)params;
-
+/* Large proof arrays belong to one heap workspace. */
+typedef struct {
   bfSSS_t in_key[VISTRUTITH_BLOCK_BITS];
   bfSSS_t out_key[VISTRUTITH_BLOCK_BITS];
   bfSSS_t z_norm_key[VISTRUTITH_ENC_CSTRNTS_NORM_LEN];
   bfSSS_t z_io0_key[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
   bfSSS_t z_io1_key[VISTRUTITH_ENC_CSTRNTS_IO_LEN];
+} vistrutith_proof_verifier_workspace_t;
 
-  constant_to_vole_SSS_verifier(in_key, owf_in, delta, VISTRUTITH_BLOCK_BITS);
-  constant_to_vole_SSS_verifier(out_key, owf_out, delta, VISTRUTITH_BLOCK_BITS);
-  vistrutith_hash_keyspace_reduction_verifier(hasher, w_key);
-
-  vistrutith_enc_constraints_verifier(z_norm_key, z_io0_key, z_io1_key, in_key, out_key, w_key);
-
-  const bfSSS_t delta_sq = bfSSS_mul(delta, delta);
-  for (unsigned int i = 0; i < VISTRUTITH_ENC_CSTRNTS_NORM_LEN; ++i) {
-    const bfSSS_t acc =
-        bfSSS_add(z_norm_key[i], bfSSS_add(bfSSS_mul(delta, z_io0_key[i]),
-                                           bfSSS_mul(delta_sq, z_io1_key[i])));
-    zk_hash_SSS_update(hasher, acc);
+static void vistrutith_SSS_constraints_verifier(const params_t* params, zk_hash_SSS_ctx* hasher,
+                                                const bfSSS_t* w_key, const uint8_t* owf_in,
+                                                const uint8_t* owf_out, bfSSS_t delta) {
+  vistrutith_proof_verifier_workspace_t* workspace = malloc(sizeof(*workspace));
+  if (!workspace) {
+    abort();
   }
+
+  (void)params;
+
+
+  constant_to_vole_SSS_verifier(workspace->in_key, owf_in, delta, VISTRUTITH_BLOCK_BITS);
+  constant_to_vole_SSS_verifier(workspace->out_key, owf_out, delta, VISTRUTITH_BLOCK_BITS);
+  vistrutith_hash_keyspace_reduction_verifier(hasher, w_key, delta);
+
+  vistrutith_enc_constraints_verifier(workspace->z_norm_key, workspace->z_io0_key, workspace->z_io1_key, workspace->in_key, workspace->out_key, w_key, delta);
+
+  /* clarify-261002-1000_xhs1.txt item 2: hash the same complete constraint vector as the prover. */
+  for (unsigned int i = 0; i < VISTRUTITH_ENC_CSTRNTS_NORM_LEN; ++i) {
+    zk_hash_SSS_update(hasher, workspace->z_norm_key[i]);
+  }
+  for (unsigned int i = 0; i < VISTRUTITH_ENC_CSTRNTS_IO_LEN; ++i) {
+    zk_hash_SSS_update(hasher, workspace->z_io0_key[i]);
+  }
+  for (unsigned int i = 0; i < VISTRUTITH_ENC_CSTRNTS_IO_LEN; ++i) {
+    zk_hash_SSS_update(hasher, workspace->z_io1_key[i]);
+  }
+  free(workspace);
 }
 
 static bfSSS_t* column_to_row_major_and_shrink_V_SSS(uint8_t** v, unsigned int ell) {

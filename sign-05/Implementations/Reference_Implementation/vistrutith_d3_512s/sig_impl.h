@@ -5,7 +5,8 @@
 #include <stdint.h>
 #include "params.h"
 
-void vistrutith_sign_opt_d3_512s(const params_t* params, uint8_t* sig, const uint8_t* msg,
+/* Return failure when the final-challenge counter is exhausted. */
+int vistrutith_sign_opt_d3_512s(const params_t* params, uint8_t* sig, const uint8_t* msg,
                                  size_t msglen, const uint8_t* owf_key,
                                  const uint8_t* owf_input, const uint8_t* owf_output,
                                  const uint8_t* witness, const uint8_t* rho, size_t rholen);

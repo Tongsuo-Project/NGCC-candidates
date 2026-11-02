@@ -9,6 +9,9 @@
 
 #define UNIVERSAL_HASH_B_BITS 16
 #define UNIVERSAL_HASH_B (UNIVERSAL_HASH_B_BITS / 8)
+/* External signing randomness length is independent of every PRG block size. */
+#define SIGN_RANDOMNESS_BITS 384
+#define SIGN_RANDOMNESS_BYTES (SIGN_RANDOMNESS_BITS / 8)
 /* IV_PRE_SIZE is the H3 output stored in signatures before H4.
  * LAMBDA_IV_SIZE/IV_SIZE is the H4-derived IV length used by PRG and hash domains;
  * it is independent of the SM4th field width lambda_f.

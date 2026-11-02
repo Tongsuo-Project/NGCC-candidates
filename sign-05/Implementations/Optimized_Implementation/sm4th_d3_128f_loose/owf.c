@@ -1,3 +1,4 @@
+/* Unused signature-independent helpers were removed; active backend entrypoints remain. */
 /*
  * SPDX-License-Identifier: MIT
  */
@@ -6,7 +7,6 @@
 
 #include "owf.h"
 #include "utils_sm4/sm4.h"
-#include "utils.h"
 
 void owf_sm4_128(const uint8_t* key, const uint8_t* input, uint8_t* output) {
   generic_sm4_ecb_t ctx;
@@ -21,8 +21,3 @@ void owf_sm4_128(const uint8_t* key, const uint8_t* input, uint8_t* output) {
   generic_sm4_ecb_free(&ctx);
 }
 
-void owf_sm4_em_128(const uint8_t* key, const uint8_t* input, uint8_t* output) {
-  /* Same as owf_sm4_128 with swapped keys and additional xor. */
-  owf_sm4_128(input, key, output);
-  xor_u8_array(output, key, output, 16);
-}

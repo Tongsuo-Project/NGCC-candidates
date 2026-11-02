@@ -14,7 +14,7 @@ the PRG, uses a 128-bit IV, and its d3 leaf PRG path emits 276 bytes.
 ├── KAT_SIG.c                              # KAT vector generator entry
 ├── Makefile                               # Build rules (x86/non-x86 defaults)
 ├── README.md                              # This document
-├── auxfunc.c / auxfunc.h                  # SM3 helper interface
+├── auxfunc.c / auxfunc.h                  # API Hash/XOF helper interface
 ├── bavc.c / bavc.h                        # BAVC commit/reconstruct
 ├── bench_cycles.h                         # Cycle-counter and stats helpers
 ├── compat.c / compat.h                    # Compatibility wrappers
@@ -22,7 +22,6 @@ the PRG, uses a 128-bit IV, and its d3 leaf PRG path emits 276 bytes.
 ├── endian_compat.h                        # Endian helpers/macros
 ├── fallbacks.h                            # Feature fallback defines
 ├── fields.c / fields.h                    # GF arithmetic (with optional PCLMUL)
-├── hygon_cis_sm4_probe.c                  # Hygon CIS SM4 runtime probe for KAT
 ├── macros.h                               # Shared macros
 ├── owf.c / owf.h                          # One-way function helpers
 ├── params.c / params.h                    # Parameter set definitions
@@ -45,8 +44,6 @@ the PRG, uses a 128-bit IV, and its d3 leaf PRG path emits 276 bytes.
 │   ├── sm4_asm.S                          # x86 assembly SM4 backend
 │   ├── sm4_core.c                         # SM4 core rounds
 │   ├── sm4_ecb.c                          # ECB backend wrapper
-│   ├── hygon_cis_sm4.c / .h               # Hygon CIS SM4 wrapper
-│   ├── hygon_cis_sm4_asm.S                # Hygon CIS SM4 assembly backend
 │   ├── sm4_sbox.c                         # S-box tables/logic
 │   └── sm4ni/                             # Imported SM4NI reference sources
 │       ├── README.md
@@ -62,6 +59,9 @@ the PRG, uses a 128-bit IV, and its d3 leaf PRG path emits 276 bytes.
 - GNU Make
 - C11 runtime (`-lm`)
 
+Native Intel SM4 kernels require GCC 14 or newer, or Clang with
+`sm4intrin.h`. Other compiler builds use the remaining supported paths.
+
 ## Build
 
 Default build is release:
@@ -70,24 +70,27 @@ Default build is release:
 make sm4th_d3_128s_loose_bench
 ```
 
+`make` and `make REF_USE_LOOKUP_TABLES=0` select the default table-free
+cipher/proof helpers. `make REF_USE_LOOKUP_TABLES=1` explicitly enables the
+legacy lookup-table path.
+
 Build options:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NDEBUG` | `1` | `1`: release (`-O3 -march=native -flto`), `0`: keep base flags |
-| `FIELD_PCLMUL` | `1` on x86-64/i386, `0` otherwise | Enable GF(2^128) carryless-multiply acceleration |
-| `PRG_ACCE` | `1` on x86-64/i386, `0` otherwise | Enable the ordinary x86 SM4NI/AES-NI simulation PRG path |
-| `HYGON_SM4_ACCE` | `0` | Enable the Hygon CIS SM4 instruction PRG backend; only on Hygon x86-64 CPUs |
-| `USE_SBOX_TABLE` | `1` | Enable the portable SM4 S-box lookup table |
+| `NDEBUG` | `1` | `1`: release (`-O3 -DNDEBUG` with LTO), `0`: base `-O3` flags with assertions |
+| `REF_USE_LOOKUP_TABLES` | `0` | `0`: table-free cipher/proof helpers; `1`: legacy lookup-table path |
+| `FIELD_PCLMUL` | `1` on x86-64, `0` otherwise | Enable optional GF(2^128) carryless-multiply kernels, selected at runtime |
+| `PRG_ACCE` | `1` on x86, `0` otherwise | Enable optional AES-NI/SSSE3 SM4NI simulation for the SM4 PRG |
+| `INTEL_SM4_ACCE` | `1` on x86-64, `0` otherwise | Compile native Intel SM4 kernels when supported by the compiler |
 | `COMPONENT_TIMING` | `0` | `1` prints sign/verify component timing |
 | `COMPONENT_TIMING_VERBOSE` | `0` | `1` prints every measured timing span |
 
-Hygon SM4-only ISA build:
-
-```bash
-make clean
-make PRG_ACCE=0 HYGON_SM4_ACCE=1 KAT_SIG sm4th_d3_128s_loose_bench
-```
+SM4 dispatch checks CPU and OS support at runtime and selects native Intel
+SM4, AES-NI/SSSE3 SM4NI simulation, or portable C, in that order when the
+corresponding kernels are enabled. Native SM4 is independent of `PRG_ACCE`
+and `SM4_OWF_ACCE`; use `INTEL_SM4_ACCE=0` to disable it.
+The release build uses `-mtune=native` when the compiler accepts it.
 
 ## Run
 
@@ -95,19 +98,33 @@ Benchmark:
 
 ```bash
 ./sm4th_d3_128s_loose_bench
-./sm4th_d3_128s_loose_bench 100
+./sm4th_d3_128s_loose_bench 100 0
 ./sm4th_d3_128s_loose_bench 100 8
+./sm4th_d3_128s_loose_bench 100 0 --all
 ```
 
-`./sm4th_d3_128s_loose_bench` runs 100 fixed-56-byte sign/verify iterations by default.
-The signed message is the deterministic 56-byte ASCII string `Chinith sm4th ublockith vistrutith 56-byte bench msg v1.`.
-The optional second argument is `MESSAGE_STEP`; it defaults to `0`, and `8` runs increasing message lengths `56, 64, 72, ...`.
+`ITERATIONS` defaults to `100` and is the actual number of KeyGen/Sign/Verify
+combinations. There is no built-in warmup. The optional `MESSAGE_STEP` defaults
+to `0`; message lengths are `56 + MESSAGE_STEP*i` bytes. Messages are
+deterministic ASCII strings beginning with
+`Chinith sm4th ublockith vistrutith 56-byte bench msg v1.`.
 
-The bench prints wall-clock averages, the cycle-counter source, average Mcycles,
-and per-iteration min/median/p90/max stats. The median is the typical iteration
-time. The p90 value is the 90th percentile: 90% of iterations are no slower than
-this value. On shared Hygon hosts, prefer the `per-iteration Mcyc/op stats`
-median and p90 over the wall-clock average.
+The default table has `operation`, `mean ms/op`, `mean cycles/op` and
+`mean Mcycles/op` columns for KeyGen, Sign and Verify, followed by public-key,
+secret-key and signature sizes in bytes. Milliseconds use `clock()` process
+user-plus-system CPU time; cycles are user-mode hardware CPU cycles, not TSC
+ticks or a frequency conversion. Mcycles are cycles divided by 1,000,000.
+Unavailable cycle measurements show `N/A` and a reason.
+
+`--all` runs speed measurement in a fresh process. On Linux, it then starts
+a separate fresh process for memory measurement. Speed uses the requested
+`ITERATIONS`; memory
+includes all three complete API combinations. It also reports key/signature
+sizes and the maximum child-process RSS observed at initial and syscall stops.
+This includes initialization and all memory iterations and excludes the
+observer. It is process memory, not a separate peak for each API. Memory-run
+timings are discarded. RSS observation requires Linux; on macOS `--all`
+completes successfully after speed measurement and reports `N/A` for RSS.
 
 KAT:
 
@@ -115,18 +132,16 @@ KAT:
 bash run_kat_sig.sh
 ```
 
-Behavior of `run_kat_sig.sh`:
-- On Hygon x86-64: build/run `hygon_cis_sm4_probe` first; if it passes, build/run
-  `KAT_SIG` with `PRG_ACCE=0 HYGON_SM4_ACCE=1`.
-- On other x86: build/run `KAT_SIG` with default optimized flags.
-- On non-x86: prints one log line and forces portable fallback flags to match reference output.
-- Set `HYGON_SM4_KAT=1` to force the Hygon SM4 probe path, or `HYGON_SM4_KAT=0`
-  to force the ordinary x86 path.
-
-KAT output is written to `output/`.
-
-From the repository root, compare Optimized/Reference/Test_Vector hashes with:
+KAT output is written to `output/KAT_SIG_sm4th_d3_128s_loose.txt`.
+To generate KATs with an explicit lookup mode, build and run the target directly:
 
 ```bash
-bash Chinith/check_kat_hash.sh --variant sm4th_d3_128s_loose
+make NDEBUG=1 REF_USE_LOOKUP_TABLES=1 KAT_SIG
+./KAT_SIG
+```
+
+From the repository root, compare Optimized/Reference/Test_Vectors hashes with:
+
+```bash
+bash Chinith/Implementations/check_kat_hash.sh --variant sm4th_d3_128s_loose
 ```

@@ -3,6 +3,7 @@
 #include "../utils.h"
 
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 
 /*
@@ -330,6 +331,7 @@ void vistrutith_invnorm_to_conjugates_verifier(bf512_t out_key[4],
   }
 }
 
+/* clarify-261002-1000_xhs1.txt item 2: place affine constants only at the commitment's top degree. */
 void vistrutith_sbox_affine_prover(bf512_t* out_val, bf512_t* out_tag,
                                    const bf512_t* in_val, const bf512_t* in_tag,
                                    size_t nbytes, bool sq) {
@@ -338,7 +340,7 @@ void vistrutith_sbox_affine_prover(bf512_t* out_val, bf512_t* out_tag,
 
   for (size_t i = 0; i < nbytes; ++i) {
     bf512_t acc_val = C[8];
-    bf512_t acc_tag = C[8];
+    bf512_t acc_tag = bf512_zero();
 
     for (unsigned int k = 0; k < 8u; ++k) {
       const size_t idx = i * 8u + ((k + t) & 7u);
@@ -351,16 +353,18 @@ void vistrutith_sbox_affine_prover(bf512_t* out_val, bf512_t* out_tag,
 }
 
 void vistrutith_sbox_affine_verifier(bf512_t* out_key, const bf512_t* in_key,
-                                     size_t nbytes, bool sq) {
+                                     size_t nbytes, bool sq, bf512_t constant_scale) {
   const bf512_t* C = sq ? vistrutith_sbox_affine_coeffs_sq : vistrutith_sbox_affine_coeffs;
   const unsigned int t = sq ? 1u : 0u;
+  const bf512_t affine_constant = bf512_mul(C[8], constant_scale);
 
   for (size_t i = 0; i < nbytes; ++i) {
-    bf512_t acc_key = C[8];
+    bf512_t acc_key = affine_constant;
 
     for (unsigned int k = 0; k < 8u; ++k) {
       const size_t idx = i * 8u + ((k + t) & 7u);
-      acc_key = bf512_add(acc_key, bf512_mul(C[k], in_key[idx]));
+      /* clarify-261002-1000_xhs1.txt item 2: C[5] is one in both affine maps. */
+      acc_key = bf512_add(acc_key, k == 5u ? in_key[idx] : bf512_mul(C[k], in_key[idx]));
     }
     out_key[i] = acc_key;
   }
@@ -471,36 +475,21 @@ void vistrutith_mixcolumns_verifier(bf512_t* out_key, const bf512_t* in_key,
   if ((nbytes & 15u) != 0u) {
     return;
   }
-
   const bf512_t* coeffs = sq ? vistrutith_mixcolumns_coeffs_sq : vistrutith_mixcolumns_coeffs;
-  const bf512_t v1 = coeffs[0];
   const bf512_t v2 = coeffs[1];
-  const bf512_t v3 = coeffs[2];
 
+  /* clarify-261002-1000_xhs1.txt item 2: factor each coefficient's MixColumns map to four multiplications per column. */
   for (size_t base = 0; base < nbytes; base += 16u) {
     bf512_t out_key_blk[16];
-
     for (unsigned int c = 0; c < 4u; ++c) {
-      const unsigned int i0 = 4u * c;
-      const unsigned int i1 = i0 + 1u;
-      const unsigned int i2 = i0 + 2u;
-      const unsigned int i3 = i0 + 3u;
-
-      const bf512_t a0 = in_key[base + i0];
-      const bf512_t a1 = in_key[base + i1];
-      const bf512_t a2 = in_key[base + i2];
-      const bf512_t a3 = in_key[base + i3];
-
-      out_key_blk[i0] = bf512_add(bf512_add(bf512_mul(a0, v2), bf512_mul(a1, v3)),
-                                  bf512_add(bf512_mul(a2, v1), bf512_mul(a3, v1)));
-      out_key_blk[i1] = bf512_add(bf512_add(bf512_mul(a0, v1), bf512_mul(a1, v2)),
-                                  bf512_add(bf512_mul(a2, v3), bf512_mul(a3, v1)));
-      out_key_blk[i2] = bf512_add(bf512_add(bf512_mul(a0, v1), bf512_mul(a1, v1)),
-                                  bf512_add(bf512_mul(a2, v2), bf512_mul(a3, v3)));
-      out_key_blk[i3] = bf512_add(bf512_add(bf512_mul(a0, v3), bf512_mul(a1, v1)),
-                                  bf512_add(bf512_mul(a2, v1), bf512_mul(a3, v2)));
+      const unsigned int i = 4u * c;
+      const bf512_t* a = in_key + base + i;
+      const bf512_t total = bf512_add(bf512_add(a[0], a[1]), bf512_add(a[2], a[3]));
+      for (unsigned int r = 0; r < 4u; ++r) {
+        out_key_blk[i + r] =
+            bf512_add(bf512_add(total, a[r]), bf512_mul(v2, bf512_add(a[r], a[(r + 1u) & 3u])));
+      }
     }
-
     memcpy(out_key + base, out_key_blk, sizeof(out_key_blk));
   }
 }
@@ -670,6 +659,7 @@ void vistrutith_bit_inv_shiftrows_verifier(bf512_t out_key[128], const bf512_t i
   }
 }
 
+/* clarify-261002-1000_xhs1.txt item 2: inverse affine constants change values and evaluate as Delta on the verifier. */
 void vistrutith_bit_inv_sbox_affine_prover(uint8_t out_bits[16], bf512_t out_tag[128],
                                            const uint8_t in_bits[16],
                                            const bf512_t in_tag[128]) {
@@ -686,7 +676,7 @@ void vistrutith_bit_inv_sbox_affine_prover(uint8_t out_bits[16], bf512_t out_tag
                                        get_bit(in_bits[i], j6) ^ get_bit(c, j));
       const bf512_t t =
           bf512_add(bf512_add(in_tag[i * 8u + j1], in_tag[i * 8u + j3]),
-                    bf512_add(in_tag[i * 8u + j6], bf512_from_bit(get_bit(c, j))));
+                    in_tag[i * 8u + j6]);
       y |= (uint8_t)set_bit(y_bit, j);
       out_tag[i * 8u + j] = t;
     }
@@ -694,7 +684,8 @@ void vistrutith_bit_inv_sbox_affine_prover(uint8_t out_bits[16], bf512_t out_tag
   }
 }
 
-void vistrutith_bit_inv_sbox_affine_verifier(bf512_t out_key[128], const bf512_t in_key[128]) {
+void vistrutith_bit_inv_sbox_affine_verifier(bf512_t out_key[128], const bf512_t in_key[128],
+                                           bf512_t delta) {
   const uint8_t c = UINT8_C(0x05); /* c_j = 1 for j in {0,2} */
 
   for (unsigned int i = 0; i < 16u; ++i) {
@@ -704,7 +695,7 @@ void vistrutith_bit_inv_sbox_affine_verifier(bf512_t out_key[128], const bf512_t
       const unsigned int j6 = (j + 2u) & 7u;
       out_key[i * 8u + j] =
           bf512_add(bf512_add(in_key[i * 8u + j1], in_key[i * 8u + j3]),
-                    bf512_add(in_key[i * 8u + j6], bf512_from_bit(get_bit(c, j))));
+                    bf512_add(in_key[i * 8u + j6], bf512_mul_bit(delta, get_bit(c, j))));
     }
   }
 }
@@ -751,106 +742,243 @@ static uint8_t vistrutith_unpack_norm_nibble(
   return (uint8_t)(v & 0x0Fu);
 }
 
+/* clarify-261002-1000_xhs1.txt item 2: multiply full commitments, including cross terms. */
+static vistrutith_deg2_t vistrutith_mul_deg1(bf512_t a0, bf512_t a1,
+                                           bf512_t b0, bf512_t b1) {
+  vistrutith_deg2_t p;
+  p.c[0] = bf512_mul(a0, b0);
+  p.c[2] = bf512_mul(a1, b1);
+  p.c[1] = bf512_add(bf512_mul(bf512_add(a0, a1), bf512_add(b0, b1)),
+                       bf512_add(p.c[0], p.c[2]));
+  return p;
+}
+
+static vistrutith_deg3_t vistrutith_mul_deg2_deg1(const vistrutith_deg2_t* a,
+                                                bf512_t b0, bf512_t b1) {
+  /* clarify-261002-1000_xhs1.txt item 2: reuse the low product to retain all four coefficients with five multiplications. */
+  const vistrutith_deg2_t low = vistrutith_mul_deg1(a->c[0], a->c[1], b0, b1);
+  vistrutith_deg3_t p;
+  p.c[0] = low.c[0];
+  p.c[1] = low.c[1];
+  p.c[2] = bf512_add(low.c[2], bf512_mul(a->c[2], b0));
+  p.c[3] = bf512_mul(a->c[2], b1);
+  return p;
+}
+
+/* clarify-261002-1000_xhs1.txt item 2: embed the unchanged shuffled key once per complete constraint evaluation. */
+typedef struct {
+  bf512_t val[VISTRUTAH_512_BLOCK_SIZE], tag[VISTRUTAH_512_BLOCK_SIZE];
+  bf512_t sq_val[VISTRUTAH_512_BLOCK_SIZE], sq_tag[VISTRUTAH_512_BLOCK_SIZE];
+} vistrutith_fixed_key_prover_cache_t;
+
+typedef struct {
+  bf512_t lifted[VISTRUTAH_512_BLOCK_SIZE], sq_lifted[VISTRUTAH_512_BLOCK_SIZE];
+} vistrutith_fixed_key_verifier_cache_t;
+
+static void vistrutith_fixed_key_prover_cache_init(
+    vistrutith_fixed_key_prover_cache_t* cache,
+    const uint8_t bits[VISTRUTAH_512_BLOCK_SIZE],
+    const bf512_t tag[VISTRUTAH_512_BLOCK_SIZE * 8u]) {
+  for (unsigned int b = 0; b < 4u; ++b) {
+    const unsigned int base = 16u * b;
+    vistrutith_state_to_bytes_prover(cache->val + base, cache->tag + base,
+                                    bits + base, tag + base * 8u);
+  }
+  for (unsigned int u = 0; u < VISTRUTAH_512_BLOCK_SIZE; ++u) {
+    bf512_t sq_bits_tag[8];
+    cache->sq_val[u] = bf512_byte_combine_bits_sq(bits[u]);
+    bf512_sq_bit(sq_bits_tag, tag + u * 8u);
+    cache->sq_tag[u] = bf512_byte_combine(sq_bits_tag);
+  }
+}
+
+static void vistrutith_fixed_key_verifier_cache_init(
+    vistrutith_fixed_key_verifier_cache_t* cache,
+    const bf512_t key[VISTRUTAH_512_BLOCK_SIZE * 8u], bf512_t delta) {
+  bf512_t key_bytes[VISTRUTAH_512_BLOCK_SIZE];
+  for (unsigned int b = 0; b < 4u; ++b) {
+    const unsigned int base = 16u * b;
+    vistrutith_state_to_bytes_verifier(key_bytes + base, key + base * 8u);
+  }
+  for (unsigned int u = 0; u < VISTRUTAH_512_BLOCK_SIZE; ++u) {
+    bf512_t sq_bits_key[8];
+    bf512_sq_bit(sq_bits_key, key + u * 8u);
+    /* Preserve the degree-1 SquareBits map, then cache its degree-2 Delta lift. */
+    cache->lifted[u] = bf512_mul(delta, key_bytes[u]);
+    cache->sq_lifted[u] = bf512_mul(delta, bf512_byte_combine(sq_bits_key));
+  }
+}
+
+/* clarify-261002-1000_xhs1.txt item 2: compute concrete top-degree values in the AES byte subfield, including arbitrary norm nibbles. */
+static uint8_t vistrutith_norm_value_byte(uint8_t norm) {
+  /* beta4 = beta8^6 + beta8^4, hence byte basis (1, 0x50, 0xb0, 0x0c). */
+  return (uint8_t)((norm & 1u) ^
+                   ((uint8_t)-(int)((norm >> 1u) & 1u) & UINT8_C(0x50)) ^
+                   ((uint8_t)-(int)((norm >> 2u) & 1u) & UINT8_C(0xb0)) ^
+                   ((uint8_t)-(int)((norm >> 3u) & 1u) & UINT8_C(0x0c)));
+}
+
+static uint8_t vistrutith_value_xtime(uint8_t x) {
+  return (uint8_t)((x << 1u) ^ ((uint8_t)-(int)(x >> 7u) & UINT8_C(0x1b)));
+}
+
+static void vistrutith_forward_value_layer(uint8_t out[16], const uint8_t in[16]) {
+  uint8_t affine[16], shifted[16];
+  for (unsigned int u = 0; u < 16u; ++u) {
+    const uint8_t z = in[u];
+    affine[u] = (uint8_t)(z ^ ((z << 1u) | (z >> 7u)) ^
+                             ((z << 2u) | (z >> 6u)) ^
+                             ((z << 3u) | (z >> 5u)) ^
+                             ((z << 4u) | (z >> 4u)) ^ UINT8_C(0x63));
+  }
+  for (unsigned int r = 0; r < 4u; ++r) {
+    for (unsigned int c = 0; c < 4u; ++c) {
+      shifted[4u * c + r] = affine[4u * ((c + r) & 3u) + r];
+    }
+  }
+  for (unsigned int c = 0; c < 4u; ++c) {
+    const uint8_t* a = shifted + 4u * c;
+    const uint8_t total = (uint8_t)(a[0] ^ a[1] ^ a[2] ^ a[3]);
+    for (unsigned int r = 0; r < 4u; ++r) {
+      out[4u * c + r] = (uint8_t)(total ^ a[r] ^ vistrutith_value_xtime((uint8_t)(a[r] ^ a[(r + 1u) & 3u])));
+    }
+  }
+}
+
+static void vistrutith_forward_by_norm_prover_cached(
+    vistrutith_deg2_t out_a[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg2_t out_a_sq[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg3_t z_norm[VISTRUTAH_512_BLOCK_SIZE],
+    const uint8_t in_state_bits[VISTRUTAH_512_BLOCK_SIZE],
+    const bf512_t in_state_tag[VISTRUTAH_512_BLOCK_SIZE * 8u],
+    const uint8_t norm_packed[VISTRUTAH_512_BLOCK_SIZE / 2u],
+    const bf512_t norm_tag[VISTRUTAH_512_BLOCK_SIZE * 4u],
+    const vistrutith_fixed_key_prover_cache_t* fixed_key) {
+  for (unsigned int b = 0; b < 4u; ++b) {
+    const unsigned int byte_base = 16u * b;
+    const unsigned int bit_base = byte_base * 8u;
+    bf512_t c_val[128], c_tag[128];
+    bf512_t p_coeff[3][128];
+    uint8_t product_value[16], forward_value[16];
+
+    vistrutith_state_to_conjugates_prover(c_val, c_tag, in_state_bits + byte_base,
+                                         in_state_tag + bit_base);
+    for (unsigned int u = 0; u < 16u; ++u) {
+      const unsigned int t = byte_base + u;
+      bf512_t h_val[4], h_tag[4];
+      const uint8_t norm = vistrutith_unpack_norm_nibble(norm_packed, t);
+      vistrutith_invnorm_to_conjugates_prover(h_val, h_tag, norm, norm_tag + 4u * t);
+      uint8_t x16 = in_state_bits[t];
+      for (unsigned int j = 0; j < 4u; ++j) x16 = bits_sq(x16);
+      product_value[u] = bf8_mul(x16, vistrutith_norm_value_byte(norm));
+      uint8_t conjugate_value = product_value[u];
+      for (unsigned int j = 0; j < 8u; ++j) {
+        const unsigned int idx = u * 8u + ((j + 4u) & 7u);
+        vistrutith_deg2_t p;
+        /* clarify-261002-1000_xhs1.txt item 2: only the concrete a1*b1 is embedded from GF8; retain both random-tag products and their complete cross term. */
+        p.c[0] = bf512_mul(c_tag[idx], h_tag[j & 3u]);
+        p.c[2] = bf512_byte_combine_bits(conjugate_value);
+        p.c[1] = bf512_add(
+            bf512_mul(bf512_add(c_tag[idx], c_val[idx]),
+                       bf512_add(h_tag[j & 3u], h_val[j & 3u])),
+            bf512_add(p.c[0], p.c[2]));
+        for (unsigned int k = 0; k < 3u; ++k) {
+          p_coeff[k][u * 8u + j] = p.c[k];
+        }
+        conjugate_value = bits_sq(conjugate_value);
+      }
+      vistrutith_deg2_t p0;
+      for (unsigned int k = 0; k < 3u; ++k) {
+        p0.c[k] = p_coeff[k][u * 8u];
+      }
+      z_norm[t] = vistrutith_mul_deg2_deg1(&p0, c_tag[u * 8u + 1u], c_val[u * 8u + 1u]);
+      /* lift the degree-1 x summand by X^2 before adding it to the cubic. */
+      z_norm[t].c[2] = bf512_add(z_norm[t].c[2], c_tag[u * 8u]);
+      z_norm[t].c[3] = bf512_add(z_norm[t].c[3], c_val[u * 8u]);
+    }
+
+    for (unsigned int k = 0; k < 2u; ++k) {
+      bf512_t aff[16], aff_sq[16], sr[16], sr_sq[16], mc[16], mc_sq[16];
+      const bf512_t constant_scale = bf512_zero();
+      /* affine constants are at X^2 and the degree-1 key is lifted by X. */
+      vistrutith_sbox_affine_verifier(aff, p_coeff[k], 16u, false, constant_scale);
+      vistrutith_sbox_affine_verifier(aff_sq, p_coeff[k], 16u, true, constant_scale);
+      vistrutith_shiftrows_verifier(sr, aff, 16u);
+      vistrutith_shiftrows_verifier(sr_sq, aff_sq, 16u);
+      vistrutith_mixcolumns_verifier(mc, sr, 16u, false);
+      vistrutith_mixcolumns_verifier(mc_sq, sr_sq, 16u, true);
+      for (unsigned int u = 0; u < 16u; ++u) {
+        const unsigned int t = byte_base + u;
+        out_a[t].c[k] = mc[u];
+        out_a_sq[t].c[k] = mc_sq[u];
+        if (k == 1u) {
+          out_a[t].c[k] = bf512_add(out_a[t].c[k], fixed_key->tag[t]);
+          out_a_sq[t].c[k] = bf512_add(out_a_sq[t].c[k], fixed_key->sq_tag[t]);
+        }
+      }
+    }
+    /* clarify-261002-1000_xhs1.txt item 2: top coefficients use the same affine/ShiftRows/MixColumns in GF8; the squared map is its Frobenius square. */
+    vistrutith_forward_value_layer(forward_value, product_value);
+    for (unsigned int u = 0; u < 16u; ++u) {
+      const unsigned int t = byte_base + u;
+      out_a[t].c[2] = bf512_add(bf512_byte_combine_bits(forward_value[u]), fixed_key->val[t]);
+      out_a_sq[t].c[2] = bf512_add(bf512_byte_combine_bits_sq(forward_value[u]), fixed_key->sq_val[t]);
+    }
+  }
+}
+
 void vistrutith_forward_by_norm_prover(
-    bf512_t out_a_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t out_a_tag[VISTRUTAH_512_BLOCK_SIZE],
-    bf512_t out_a_sq_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t out_a_sq_tag[VISTRUTAH_512_BLOCK_SIZE],
-    bf512_t z_norm_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t z_norm_tag[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg2_t out_a[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg2_t out_a_sq[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg3_t z_norm[VISTRUTAH_512_BLOCK_SIZE],
     const uint8_t in_state_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t in_state_tag[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const uint8_t norm_packed[VISTRUTAH_512_BLOCK_SIZE / 2u],
     const bf512_t norm_tag[VISTRUTAH_512_BLOCK_SIZE * 4u],
     const uint8_t fixed_key_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t fixed_key_tag[VISTRUTAH_512_BLOCK_SIZE * 8u]) {
+  vistrutith_fixed_key_prover_cache_t cache;
+  vistrutith_fixed_key_prover_cache_init(&cache, fixed_key_bits, fixed_key_tag);
+  vistrutith_forward_by_norm_prover_cached(out_a, out_a_sq, z_norm, in_state_bits,
+                                           in_state_tag, norm_packed, norm_tag, &cache);
+}
 
+static void vistrutith_forward_by_norm_verifier_cached(
+    bf512_t out_a_key[VISTRUTAH_512_BLOCK_SIZE], bf512_t out_a_sq_key[VISTRUTAH_512_BLOCK_SIZE],
+    bf512_t z_norm_key[VISTRUTAH_512_BLOCK_SIZE],
+    const bf512_t in_state_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
+    const bf512_t norm_key[VISTRUTAH_512_BLOCK_SIZE * 4u],
+    const vistrutith_fixed_key_verifier_cache_t* fixed_key, bf512_t delta) {
+  const bf512_t delta_sq = bf512_mul(delta, delta);
   for (unsigned int b = 0; b < 4u; ++b) {
     const unsigned int byte_base = 16u * b;
     const unsigned int bit_base = byte_base * 8u;
+    bf512_t c_key[128], p_key[128];
+    bf512_t aff[16], aff_sq[16], sr[16], sr_sq[16], mc[16], mc_sq[16];
 
-    bf512_t c_val[128];
-    bf512_t c_tag[128];
-    bf512_t p_val[128];
-    bf512_t p_tag[128];
-
-    bf512_t a_aff_val[16];
-    bf512_t a_aff_tag[16];
-    bf512_t a_aff_sq_val[16];
-    bf512_t a_aff_sq_tag[16];
-    bf512_t a_sr_val[16];
-    bf512_t a_sr_tag[16];
-    bf512_t a_sr_sq_val[16];
-    bf512_t a_sr_sq_tag[16];
-    bf512_t a_mc_val[16];
-    bf512_t a_mc_tag[16];
-    bf512_t a_mc_sq_val[16];
-    bf512_t a_mc_sq_tag[16];
-
-    bf512_t fk0_val[16];
-    bf512_t fk0_tag[16];
-    bf512_t fk1_val[16];
-    bf512_t fk1_tag[16];
-
-    // :4
-    vistrutith_state_to_conjugates_prover(c_val, c_tag, in_state_bits + byte_base,
-                                          in_state_tag + bit_base);
-
-    // :5
+    vistrutith_state_to_conjugates_verifier(c_key, in_state_key + bit_base);
     for (unsigned int u = 0; u < 16u; ++u) {
-      // :6
       const unsigned int t = byte_base + u;
-
-      // :7
-      const uint8_t nibble = vistrutith_unpack_norm_nibble(norm_packed, t);
-      const bf512_t* nibble_tag = norm_tag + 4u * t;
-      bf512_t h_val[4];
-      bf512_t h_tag[4];
-      vistrutith_invnorm_to_conjugates_prover(h_val, h_tag, nibble, nibble_tag);
-
-      // :8-9
-      z_norm_val[t] =
-          bf512_add(bf512_mul(bf512_mul(h_val[0], c_val[u * 8u + 4u]), c_val[u * 8u + 1u]),
-                    c_val[u * 8u + 0u]);
-      z_norm_tag[t] =
-          bf512_add(bf512_mul(bf512_mul(h_tag[0], c_tag[u * 8u + 4u]), c_tag[u * 8u + 1u]),
-                    c_tag[u * 8u + 0u]);
-
-       // :10-12
+      bf512_t h_key[4];
+      vistrutith_invnorm_to_conjugates_verifier(h_key, norm_key + 4u * t);
       for (unsigned int j = 0; j < 8u; ++j) {
-        p_val[u * 8u + j] = bf512_mul(c_val[u * 8u + ((j + 4u) & 7u)], h_val[j & 3u]);
-        p_tag[u * 8u + j] = bf512_mul(c_tag[u * 8u + ((j + 4u) & 7u)], h_tag[j & 3u]);
+        p_key[u * 8u + j] =
+            bf512_mul(c_key[u * 8u + ((j + 4u) & 7u)], h_key[j & 3u]);
       }
+      /* evaluate the same X^2 lift used by the prover. */
+      z_norm_key[t] = bf512_add(bf512_mul(p_key[u * 8u], c_key[u * 8u + 1u]),
+                                  bf512_mul(delta_sq, c_key[u * 8u]));
     }
-
-    // :15
-    vistrutith_sbox_affine_prover(a_aff_val, a_aff_tag, p_val, p_tag, 16u, false);
-    vistrutith_sbox_affine_prover(a_aff_sq_val, a_aff_sq_tag, p_val, p_tag, 16u, true);
-
-    // :16
-    vistrutith_shiftrows_prover(a_sr_val, a_sr_tag, a_aff_val, a_aff_tag, 16u);
-    vistrutith_shiftrows_prover(a_sr_sq_val, a_sr_sq_tag, a_aff_sq_val, a_aff_sq_tag, 16u);
-
-    // :17
-    vistrutith_mixcolumns_prover(a_mc_val, a_mc_tag, a_sr_val, a_sr_tag, 16u, false);
-    vistrutith_mixcolumns_prover(a_mc_sq_val, a_mc_sq_tag, a_sr_sq_val, a_sr_sq_tag, 16u, true);
-
-    // :19
-    vistrutith_state_to_bytes_prover(fk0_val, fk0_tag, fixed_key_bits + byte_base,
-                                     fixed_key_tag + bit_base);
-    // :20
-    // Vistrutith.StateToBytes(SquareBits(FK1))                       
-    for (unsigned int u = 0; u < 16u; ++u) {
-      bf512_t key_sq_bits_tag[8];
-      fk1_val[u] = bf512_byte_combine_bits_sq(fixed_key_bits[byte_base + u]);
-      bf512_sq_bit(key_sq_bits_tag, fixed_key_tag + bit_base + u * 8u);
-      fk1_tag[u] = bf512_byte_combine(key_sq_bits_tag);
-    }
-
-    // :21-22
+    vistrutith_sbox_affine_verifier(aff, p_key, 16u, false, delta_sq);
+    vistrutith_sbox_affine_verifier(aff_sq, p_key, 16u, true, delta_sq);
+    vistrutith_shiftrows_verifier(sr, aff, 16u);
+    vistrutith_shiftrows_verifier(sr_sq, aff_sq, 16u);
+    vistrutith_mixcolumns_verifier(mc, sr, 16u, false);
+    vistrutith_mixcolumns_verifier(mc_sq, sr_sq, 16u, true);
     for (unsigned int u = 0; u < 16u; ++u) {
       const unsigned int t = byte_base + u;
-      out_a_val[t] = bf512_add(a_mc_val[u], fk0_val[u]);
-      out_a_tag[t] = bf512_add(a_mc_tag[u], fk0_tag[u]);
-      out_a_sq_val[t] = bf512_add(a_mc_sq_val[u], fk1_val[u]);
-      out_a_sq_tag[t] = bf512_add(a_mc_sq_tag[u], fk1_tag[u]);
+      out_a_key[t] = bf512_add(mc[u], fixed_key->lifted[t]);
+      out_a_sq_key[t] = bf512_add(mc_sq[u], fixed_key->sq_lifted[t]);
     }
   }
 }
@@ -860,64 +988,11 @@ void vistrutith_forward_by_norm_verifier(
     bf512_t z_norm_key[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t in_state_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t norm_key[VISTRUTAH_512_BLOCK_SIZE * 4u],
-    const bf512_t fixed_key_key[VISTRUTAH_512_BLOCK_SIZE * 8u]) {
-  for (unsigned int b = 0; b < 4u; ++b) {
-    const unsigned int byte_base = 16u * b;
-    const unsigned int bit_base = byte_base * 8u;
-
-    bf512_t c_key[128];
-    bf512_t p_key[128];
-
-    bf512_t a_aff_key[16];
-    bf512_t a_aff_sq_key[16];
-    bf512_t a_sr_key[16];
-    bf512_t a_sr_sq_key[16];
-    bf512_t a_mc_key[16];
-    bf512_t a_mc_sq_key[16];
-
-    bf512_t fk0_key[16];
-    bf512_t fk1_key[16];
-
-    vistrutith_state_to_conjugates_verifier(c_key, in_state_key + bit_base);
-
-    for (unsigned int u = 0; u < 16u; ++u) {
-      const unsigned int t = byte_base + u;
-      const bf512_t* nibble_key = norm_key + 4u * t;
-      bf512_t h_key[4];
-
-      vistrutith_invnorm_to_conjugates_verifier(h_key, nibble_key);
-
-      z_norm_key[t] =
-          bf512_add(bf512_mul(bf512_mul(h_key[0], c_key[u * 8u + 4u]), c_key[u * 8u + 1u]),
-                    c_key[u * 8u + 0u]);
-
-      for (unsigned int j = 0; j < 8u; ++j) {
-        p_key[u * 8u + j] = bf512_mul(c_key[u * 8u + ((j + 4u) & 7u)], h_key[j & 3u]);
-      }
-    }
-
-    vistrutith_sbox_affine_verifier(a_aff_key, p_key, 16u, false);
-    vistrutith_sbox_affine_verifier(a_aff_sq_key, p_key, 16u, true);
-
-    vistrutith_shiftrows_verifier(a_sr_key, a_aff_key, 16u);
-    vistrutith_shiftrows_verifier(a_sr_sq_key, a_aff_sq_key, 16u);
-
-    vistrutith_mixcolumns_verifier(a_mc_key, a_sr_key, 16u, false);
-    vistrutith_mixcolumns_verifier(a_mc_sq_key, a_sr_sq_key, 16u, true);
-
-    vistrutith_state_to_bytes_verifier(fk0_key, fixed_key_key + bit_base);
-    for (unsigned int u = 0; u < 16u; ++u) {
-      bf512_t key_sq_bits[8];
-      bf512_sq_bit(key_sq_bits, fixed_key_key + bit_base + u * 8u);
-      fk1_key[u] = bf512_byte_combine(key_sq_bits);
-    }
-
-    for (unsigned int u = 0; u < 16u; ++u) {
-      const unsigned int t = byte_base + u;
-      out_a_key[t] = bf512_add(a_mc_key[u], fk0_key[u]);
-      out_a_sq_key[t] = bf512_add(a_mc_sq_key[u], fk1_key[u]);
-    }
-  }
+    const bf512_t fixed_key_key[VISTRUTAH_512_BLOCK_SIZE * 8u], bf512_t delta) {
+  vistrutith_fixed_key_verifier_cache_t cache;
+  vistrutith_fixed_key_verifier_cache_init(&cache, fixed_key_key, delta);
+  vistrutith_forward_by_norm_verifier_cached(out_a_key, out_a_sq_key, z_norm_key,
+                                             in_state_key, norm_key, &cache, delta);
 }
 
 void vistrutith_backward_zerornd_by_bits_prover(
@@ -942,9 +1017,7 @@ void vistrutith_backward_zerornd_by_bits_prover(
   for (unsigned int i = 0; i < 16u; ++i) {
     u_bits[i] ^= rc_bits[i];
   }
-  for (unsigned int bit_i = 0; bit_i < 16u * 8u; ++bit_i) {
-    u_tag[bit_i] = bf512_add(u_tag[bit_i], bf512_from_bit(ptr_get_bit(rc_bits, bit_i)));
-  }
+  /* clarify-261002-1000_xhs1.txt item 2: RC changes the value, not its constant tag. */
 
   vistrutith_inv_mix_prover(v_bits, v_tag, u_bits, u_tag);
 
@@ -970,7 +1043,8 @@ void vistrutith_backward_zerornd_by_bits_prover(
 void vistrutith_backward_zerornd_by_bits_verifier(
     bf512_t out_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t m_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
-    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u], const uint8_t rc_bits[16]) {
+    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u], const uint8_t rc_bits[16],
+    bf512_t delta) {
   bf512_t u_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
   bf512_t v_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
 
@@ -980,7 +1054,8 @@ void vistrutith_backward_zerornd_by_bits_verifier(
 
   /* Branch 0 additionally xors RC_{i-1}. */
   for (unsigned int bit_i = 0; bit_i < 16u * 8u; ++bit_i) {
-    u_key[bit_i] = bf512_add(u_key[bit_i], bf512_from_bit(ptr_get_bit(rc_bits, bit_i)));
+    /* clarify-261002-1000_xhs1.txt item 2: evaluate degree-1 round constants with Delta. */
+    u_key[bit_i] = bf512_add(u_key[bit_i], bf512_mul_bit(delta, ptr_get_bit(rc_bits, bit_i)));
   }
 
   vistrutith_inv_mix_verifier(v_key, u_key);
@@ -993,7 +1068,7 @@ void vistrutith_backward_zerornd_by_bits_verifier(
 
     vistrutith_bit_inv_mixcolumns_verifier(m1_key, v_key + bit_base);
     vistrutith_bit_inv_shiftrows_verifier(m2_key, m1_key);
-    vistrutith_bit_inv_sbox_affine_verifier(y_key, m2_key);
+    vistrutith_bit_inv_sbox_affine_verifier(y_key, m2_key, delta);
 
     memcpy(out_key + bit_base, y_key, sizeof(y_key));
   }
@@ -1033,7 +1108,7 @@ void vistrutith_backward_finalrnd_by_bits_prover(
 void vistrutith_backward_finalrnd_by_bits_verifier(
     bf512_t out_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t ct_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
-    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u]) {
+    const bf512_t rk_key[VISTRUTAH_512_BLOCK_SIZE * 8u], bf512_t delta) {
   for (unsigned int b = 0; b < 4u; ++b) {
     const unsigned int bit_base = 16u * 8u * b;
     bf512_t u_key[128];
@@ -1045,30 +1120,35 @@ void vistrutith_backward_finalrnd_by_bits_verifier(
     }
 
     vistrutith_bit_inv_shiftrows_verifier(u_sr_key, u_key);
-    vistrutith_bit_inv_sbox_affine_verifier(y_key, u_sr_key);
+    vistrutith_bit_inv_sbox_affine_verifier(y_key, u_sr_key, delta);
     memcpy(out_key + bit_base, y_key, sizeof(y_key));
   }
 }
 
 void vistrutith_append_cstrnts_by_bits_prover(
-    bf512_t z0_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t z0_tag[VISTRUTAH_512_BLOCK_SIZE],
-    bf512_t z1_val[VISTRUTAH_512_BLOCK_SIZE], bf512_t z1_tag[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t x_val[VISTRUTAH_512_BLOCK_SIZE], const bf512_t x_tag[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t x_sq_val[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t x_sq_tag[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg3_t z0[VISTRUTAH_512_BLOCK_SIZE],
+    vistrutith_deg3_t z1[VISTRUTAH_512_BLOCK_SIZE],
+    const vistrutith_deg2_t x[VISTRUTAH_512_BLOCK_SIZE],
+    const vistrutith_deg2_t x_sq[VISTRUTAH_512_BLOCK_SIZE],
     const uint8_t y_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t y_tag[VISTRUTAH_512_BLOCK_SIZE * 8u]) {
   for (unsigned int t = 0; t < VISTRUTAH_512_BLOCK_SIZE; ++t) {
-    const bf512_t y_hat_val = bf512_byte_combine_bits(y_bits[t]);
-    const bf512_t y_hat_tag = bf512_byte_combine(y_tag + t * 8u);
-    const bf512_t y_hat_sq_val = bf512_byte_combine_bits_sq(y_bits[t]);
-    const bf512_t y_hat_sq_tag = bf512_byte_combine_sq(y_tag + t * 8u);
+    const bf512_t y_val = bf512_byte_combine_bits(y_bits[t]);
+    const bf512_t y0 = bf512_byte_combine(y_tag + t * 8u);
+    bf512_t y_sq_bits_tag[8];
+    bf512_sq_bit(y_sq_bits_tag, y_tag + t * 8u);
+    const bf512_t y_sq_val = bf512_byte_combine_bits_sq(y_bits[t]);
+    const bf512_t y_sq0 = bf512_byte_combine(y_sq_bits_tag);
 
-    z0_val[t] = bf512_add(bf512_mul(x_sq_val[t], y_hat_val), x_val[t]);
-    z0_tag[t] = bf512_add(bf512_mul(x_sq_tag[t], y_hat_tag), x_tag[t]);
-
-    z1_val[t] = bf512_add(bf512_mul(x_val[t], y_hat_sq_val), y_hat_val);
-    z1_tag[t] = bf512_add(bf512_mul(x_tag[t], y_hat_sq_tag), y_hat_tag);
+    /* clarify-261002-1000_xhs1.txt item 2: preserve all coefficients of each IO constraint. */
+    z0[t] = vistrutith_mul_deg2_deg1(x_sq + t, y0, y_val);
+    z1[t] = vistrutith_mul_deg2_deg1(x + t, y_sq0, y_sq_val);
+    /* x is lifted by X, while y is lifted by X^2, to add at degree 3. */
+    for (unsigned int k = 0; k < 3u; ++k) {
+      z0[t].c[k + 1u] = bf512_add(z0[t].c[k + 1u], x[t].c[k]);
+    }
+    z1[t].c[2] = bf512_add(z1[t].c[2], y0);
+    z1[t].c[3] = bf512_add(z1[t].c[3], y_val);
   }
 }
 
@@ -1076,73 +1156,84 @@ void vistrutith_append_cstrnts_by_bits_verifier(
     bf512_t z0_key[VISTRUTAH_512_BLOCK_SIZE], bf512_t z1_key[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t x_key[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t x_sq_key[VISTRUTAH_512_BLOCK_SIZE],
-    const bf512_t y_key[VISTRUTAH_512_BLOCK_SIZE * 8u]) {
+    const bf512_t y_key[VISTRUTAH_512_BLOCK_SIZE * 8u], bf512_t delta) {
+  /* evaluate the prover's degree lifts with Delta and Delta^2. */
+  const bf512_t delta_sq = bf512_mul(delta, delta);
   for (unsigned int t = 0; t < VISTRUTAH_512_BLOCK_SIZE; ++t) {
     const bf512_t y_hat_key = bf512_byte_combine(y_key + t * 8u);
-    const bf512_t y_hat_sq_key = bf512_byte_combine_sq(y_key + t * 8u);
+    bf512_t y_sq_bits_key[8];
+    bf512_sq_bit(y_sq_bits_key, y_key + t * 8u);
+    const bf512_t y_hat_sq_key = bf512_byte_combine(y_sq_bits_key);
 
-    z0_key[t] = bf512_add(bf512_mul(x_sq_key[t], y_hat_key), x_key[t]);
-    z1_key[t] = bf512_add(bf512_mul(x_key[t], y_hat_sq_key), y_hat_key);
+    z0_key[t] = bf512_add(bf512_mul(x_sq_key[t], y_hat_key), bf512_mul(delta, x_key[t]));
+    z1_key[t] = bf512_add(bf512_mul(x_key[t], y_hat_sq_key), bf512_mul(delta_sq, y_hat_key));
   }
 }
 
+/* Large proof arrays belong to one heap workspace. */
+typedef struct {
+  uint8_t fixed_key_bits[VISTRUTAH_512_BLOCK_SIZE];
+  bf512_t fixed_key_tag[VISTRUTAH_512_BLOCK_SIZE * 8u];
+  uint8_t round_keys_bits[(VISTRUTITH_ENC_CSTRNTS_STEPS + 1u) * VISTRUTAH_512_BLOCK_SIZE];
+  bf512_t round_keys_tag[(VISTRUTITH_ENC_CSTRNTS_STEPS + 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u];
+  uint8_t p_bits[VISTRUTAH_512_BLOCK_SIZE];
+  bf512_t p_tag[VISTRUTAH_512_BLOCK_SIZE * 8u];
+  vistrutith_deg2_t a[VISTRUTAH_512_BLOCK_SIZE], a_sq[VISTRUTAH_512_BLOCK_SIZE];
+  vistrutith_deg3_t z_norm_round[VISTRUTAH_512_BLOCK_SIZE];
+  vistrutith_fixed_key_prover_cache_t fixed_key_cache;
+  uint8_t y_bits[VISTRUTAH_512_BLOCK_SIZE];
+  bf512_t y_tag[VISTRUTAH_512_BLOCK_SIZE * 8u];
+  vistrutith_deg3_t z0[VISTRUTAH_512_BLOCK_SIZE], z1[VISTRUTAH_512_BLOCK_SIZE];
+} vistrutith_enc_prover_workspace_t;
+
 void vistrutith_enc_constraints_prover(
-    bf512_t z_norm_val[VISTRUTITH_ENC_CSTRNTS_NORM_LEN],
-    bf512_t z_norm_tag[VISTRUTITH_ENC_CSTRNTS_NORM_LEN],
-    bf512_t z_io0_val[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
-    bf512_t z_io0_tag[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
-    bf512_t z_io1_val[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
-    bf512_t z_io1_tag[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
+    vistrutith_deg3_t z_norm[VISTRUTITH_ENC_CSTRNTS_NORM_LEN],
+    vistrutith_deg3_t z_io0[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
+    vistrutith_deg3_t z_io1[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
     const uint8_t in_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t in_tag[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const uint8_t out_bits[VISTRUTAH_512_BLOCK_SIZE],
     const bf512_t out_tag[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const uint8_t w[VISTRUTAH_WITNESS_TOTAL_BYTES],
     const bf512_t w_tag[VISTRUTAH_WITNESS_TOTAL_BYTES * 8u]) {
+  vistrutith_enc_prover_workspace_t* workspace = malloc(sizeof(*workspace));
+  if (!workspace) {
+    abort();
+  }
+
 
   const unsigned int steps = VISTRUTITH_ENC_CSTRNTS_STEPS;
   unsigned int norm_off = 0u;
   unsigned int io_off = 0u;
 
-  uint8_t fixed_key_bits[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t fixed_key_tag[VISTRUTAH_512_BLOCK_SIZE * 8u];
-  uint8_t round_keys_bits[(VISTRUTITH_ENC_CSTRNTS_STEPS + 1u) * VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t round_keys_tag[(VISTRUTITH_ENC_CSTRNTS_STEPS + 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u];
 
-  uint8_t p_bits[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t p_tag[VISTRUTAH_512_BLOCK_SIZE * 8u];
-  bf512_t a_val[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t a_tag[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t a_sq_val[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t a_sq_tag[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t z_norm_round_val[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t z_norm_round_tag[VISTRUTAH_512_BLOCK_SIZE];
 
-  memcpy(fixed_key_bits, w, VISTRUTAH_WITNESS_KEY_BYTES);
-  memcpy(fixed_key_tag, w_tag, VISTRUTAH_WITNESS_KEY_BYTES * 8u * sizeof(*w_tag));
+  memcpy(workspace->fixed_key_bits, w, VISTRUTAH_WITNESS_KEY_BYTES);
+  memcpy(workspace->fixed_key_tag, w_tag, VISTRUTAH_WITNESS_KEY_BYTES * 8u * sizeof(*w_tag));
 
   // :8
-  vistrutith_shuffle_key_prover(fixed_key_bits, fixed_key_tag);
+  vistrutith_shuffle_key_prover(workspace->fixed_key_bits, workspace->fixed_key_tag);
+  vistrutith_fixed_key_prover_cache_init(&workspace->fixed_key_cache, workspace->fixed_key_bits, workspace->fixed_key_tag);
 
   {
-    uint8_t* rk0_bits = round_keys_bits;
-    bf512_t* rk0_tag = round_keys_tag;
-    memcpy(rk0_bits + 0u, fixed_key_bits + 16u, 16u);
-    memcpy(rk0_bits + 16u, fixed_key_bits + 0u, 16u);
-    memcpy(rk0_bits + 32u, fixed_key_bits + 48u, 16u);
-    memcpy(rk0_bits + 48u, fixed_key_bits + 32u, 16u);
-    memcpy(rk0_tag + 0u * 128u, fixed_key_tag + 1u * 128u, 128u * sizeof(*rk0_tag));
-    memcpy(rk0_tag + 1u * 128u, fixed_key_tag + 0u * 128u, 128u * sizeof(*rk0_tag));
-    memcpy(rk0_tag + 2u * 128u, fixed_key_tag + 3u * 128u, 128u * sizeof(*rk0_tag));
-    memcpy(rk0_tag + 3u * 128u, fixed_key_tag + 2u * 128u, 128u * sizeof(*rk0_tag));
+    uint8_t* rk0_bits = workspace->round_keys_bits;
+    bf512_t* rk0_tag = workspace->round_keys_tag;
+    memcpy(rk0_bits + 0u, workspace->fixed_key_bits + 16u, 16u);
+    memcpy(rk0_bits + 16u, workspace->fixed_key_bits + 0u, 16u);
+    memcpy(rk0_bits + 32u, workspace->fixed_key_bits + 48u, 16u);
+    memcpy(rk0_bits + 48u, workspace->fixed_key_bits + 32u, 16u);
+    memcpy(rk0_tag + 0u * 128u, workspace->fixed_key_tag + 1u * 128u, 128u * sizeof(*rk0_tag));
+    memcpy(rk0_tag + 1u * 128u, workspace->fixed_key_tag + 0u * 128u, 128u * sizeof(*rk0_tag));
+    memcpy(rk0_tag + 2u * 128u, workspace->fixed_key_tag + 3u * 128u, 128u * sizeof(*rk0_tag));
+    memcpy(rk0_tag + 3u * 128u, workspace->fixed_key_tag + 2u * 128u, 128u * sizeof(*rk0_tag));
   }
 
   // :9-14
   for (unsigned int j = 1u; j <= steps; ++j) {
-    uint8_t* rk_bits = round_keys_bits + j * VISTRUTAH_512_BLOCK_SIZE;
-    bf512_t* rk_tag = round_keys_tag + j * VISTRUTAH_512_BLOCK_SIZE * 8u;
-    const uint8_t* prev_bits = round_keys_bits + (j - 1u) * VISTRUTAH_512_BLOCK_SIZE;
-    const bf512_t* prev_tag = round_keys_tag + (j - 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u;
+    uint8_t* rk_bits = workspace->round_keys_bits + j * VISTRUTAH_512_BLOCK_SIZE;
+    bf512_t* rk_tag = workspace->round_keys_tag + j * VISTRUTAH_512_BLOCK_SIZE * 8u;
+    const uint8_t* prev_bits = workspace->round_keys_bits + (j - 1u) * VISTRUTAH_512_BLOCK_SIZE;
+    const bf512_t* prev_tag = workspace->round_keys_tag + (j - 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u;
 
     memcpy(rk_bits, prev_bits, VISTRUTAH_512_BLOCK_SIZE);
     memcpy(rk_tag, prev_tag, VISTRUTAH_512_BLOCK_SIZE * 8u * sizeof(*rk_tag));
@@ -1154,21 +1245,18 @@ void vistrutith_enc_constraints_prover(
 
   // :17-19
   for (unsigned int i = 0; i < VISTRUTAH_512_BLOCK_SIZE; ++i) {
-    p_bits[i] = (uint8_t)(in_bits[i] ^ round_keys_bits[i]);
+    workspace->p_bits[i] = (uint8_t)(in_bits[i] ^ workspace->round_keys_bits[i]);
   }
   for (unsigned int i = 0; i < VISTRUTAH_512_BLOCK_SIZE * 8u; ++i) {
-    p_tag[i] = bf512_add(in_tag[i], round_keys_tag[i]);
+    workspace->p_tag[i] = bf512_add(in_tag[i], workspace->round_keys_tag[i]);
   }
 
   // :21
-  vistrutith_forward_by_norm_prover(a_val, a_tag, a_sq_val, a_sq_tag, z_norm_round_val,
-                                    z_norm_round_tag, p_bits, p_tag, w + VISTRUTAH_WITNESS_KEY_BYTES,
-                                    w_tag + VISTRUTAH_WITNESS_KEY_BYTES * 8u, fixed_key_bits,
-                                    fixed_key_tag);
+  vistrutith_forward_by_norm_prover_cached(workspace->a, workspace->a_sq, workspace->z_norm_round, workspace->p_bits, workspace->p_tag, w + VISTRUTAH_WITNESS_KEY_BYTES,
+                                    w_tag + VISTRUTAH_WITNESS_KEY_BYTES * 8u, &workspace->fixed_key_cache);
 
   // :22
-  memcpy(z_norm_val + norm_off, z_norm_round_val, sizeof(z_norm_round_val));
-  memcpy(z_norm_tag + norm_off, z_norm_round_tag, sizeof(z_norm_round_tag));
+  memcpy(z_norm + norm_off, workspace->z_norm_round, sizeof(workspace->z_norm_round));
   // norm_off means norm_offset, Ni offset
   norm_off += VISTRUTAH_512_BLOCK_SIZE;
 
@@ -1185,60 +1273,58 @@ void vistrutith_enc_constraints_prover(
     const uint8_t* n_packed = m_bits + VISTRUTAH_TRACE_ROUND_BYTES;
     const bf512_t* n_tag = m_tag + VISTRUTAH_TRACE_ROUND_BYTES * 8u;
     const uint8_t* rc = ROUND_CONSTANTS + 16u * (i - 1u);
-    const uint8_t* round_key_bits = round_keys_bits + i * VISTRUTAH_512_BLOCK_SIZE;
-    const bf512_t* round_key_tag = round_keys_tag + i * VISTRUTAH_512_BLOCK_SIZE * 8u;
+    const uint8_t* round_key_bits = workspace->round_keys_bits + i * VISTRUTAH_512_BLOCK_SIZE;
+    const bf512_t* round_key_tag = workspace->round_keys_tag + i * VISTRUTAH_512_BLOCK_SIZE * 8u;
 
-    uint8_t y_bits[VISTRUTAH_512_BLOCK_SIZE];
-    bf512_t y_tag[VISTRUTAH_512_BLOCK_SIZE * 8u];
-    bf512_t z0_val[VISTRUTAH_512_BLOCK_SIZE], z0_tag[VISTRUTAH_512_BLOCK_SIZE];
-    bf512_t z1_val[VISTRUTAH_512_BLOCK_SIZE], z1_tag[VISTRUTAH_512_BLOCK_SIZE];
 
     // :25
-    vistrutith_backward_zerornd_by_bits_prover(y_bits, y_tag, m_bits, m_tag, round_key_bits,
+    vistrutith_backward_zerornd_by_bits_prover(workspace->y_bits, workspace->y_tag, m_bits, m_tag, round_key_bits,
                                                round_key_tag, rc);
 
     // :26
-    vistrutith_append_cstrnts_by_bits_prover(z0_val, z0_tag, z1_val, z1_tag, a_val, a_tag, a_sq_val,
-                                             a_sq_tag, y_bits, y_tag);
-    memcpy(z_io0_val + io_off, z0_val, sizeof(z0_val));
-    memcpy(z_io0_tag + io_off, z0_tag, sizeof(z0_tag));
-    memcpy(z_io1_val + io_off, z1_val, sizeof(z1_val));
-    memcpy(z_io1_tag + io_off, z1_tag, sizeof(z1_tag));
+    vistrutith_append_cstrnts_by_bits_prover(workspace->z0, workspace->z1, workspace->a, workspace->a_sq, workspace->y_bits, workspace->y_tag);
+    memcpy(z_io0 + io_off, workspace->z0, sizeof(workspace->z0));
+    memcpy(z_io1 + io_off, workspace->z1, sizeof(workspace->z1));
     io_off += VISTRUTAH_512_BLOCK_SIZE;
 
     // :27
-    vistrutith_forward_by_norm_prover(a_val, a_tag, a_sq_val, a_sq_tag, z_norm_round_val,
-                                      z_norm_round_tag, m_bits, m_tag, n_packed, n_tag,
-                                      fixed_key_bits, fixed_key_tag);
-    memcpy(z_norm_val + norm_off, z_norm_round_val, sizeof(z_norm_round_val));
-    memcpy(z_norm_tag + norm_off, z_norm_round_tag, sizeof(z_norm_round_tag));
+    vistrutith_forward_by_norm_prover_cached(workspace->a, workspace->a_sq, workspace->z_norm_round, m_bits, m_tag, n_packed, n_tag,
+                                      &workspace->fixed_key_cache);
+    memcpy(z_norm + norm_off, workspace->z_norm_round, sizeof(workspace->z_norm_round));
     norm_off += VISTRUTAH_512_BLOCK_SIZE;
   }
 
   {
-    const uint8_t* round_key_bits = round_keys_bits + steps * VISTRUTAH_512_BLOCK_SIZE;
-    const bf512_t* round_key_tag = round_keys_tag + steps * VISTRUTAH_512_BLOCK_SIZE * 8u;
-    uint8_t y_bits[VISTRUTAH_512_BLOCK_SIZE];
-    bf512_t y_tag[VISTRUTAH_512_BLOCK_SIZE * 8u];
-    bf512_t z0_val[VISTRUTAH_512_BLOCK_SIZE], z0_tag[VISTRUTAH_512_BLOCK_SIZE];
-    bf512_t z1_val[VISTRUTAH_512_BLOCK_SIZE], z1_tag[VISTRUTAH_512_BLOCK_SIZE];
+    const uint8_t* round_key_bits = workspace->round_keys_bits + steps * VISTRUTAH_512_BLOCK_SIZE;
+    const bf512_t* round_key_tag = workspace->round_keys_tag + steps * VISTRUTAH_512_BLOCK_SIZE * 8u;
 
     // :31
-    vistrutith_backward_finalrnd_by_bits_prover(y_bits, y_tag, out_bits, out_tag, round_key_bits,
+    vistrutith_backward_finalrnd_by_bits_prover(workspace->y_bits, workspace->y_tag, out_bits, out_tag, round_key_bits,
                                                 round_key_tag);
     // :32                                            
-    vistrutith_append_cstrnts_by_bits_prover(z0_val, z0_tag, z1_val, z1_tag, a_val, a_tag, a_sq_val,
-                                             a_sq_tag, y_bits, y_tag);
-    memcpy(z_io0_val + io_off, z0_val, sizeof(z0_val));
-    memcpy(z_io0_tag + io_off, z0_tag, sizeof(z0_tag));
-    memcpy(z_io1_val + io_off, z1_val, sizeof(z1_val));
-    memcpy(z_io1_tag + io_off, z1_tag, sizeof(z1_tag));
+    vistrutith_append_cstrnts_by_bits_prover(workspace->z0, workspace->z1, workspace->a, workspace->a_sq, workspace->y_bits, workspace->y_tag);
+    memcpy(z_io0 + io_off, workspace->z0, sizeof(workspace->z0));
+    memcpy(z_io1 + io_off, workspace->z1, sizeof(workspace->z1));
     io_off += VISTRUTAH_512_BLOCK_SIZE;
   }
 
   assert(norm_off == VISTRUTITH_ENC_CSTRNTS_NORM_LEN);
   assert(io_off == VISTRUTITH_ENC_CSTRNTS_IO_LEN);
+  free(workspace);
 }
+
+/* Large proof arrays belong to one heap workspace. */
+typedef struct {
+  bf512_t fixed_key_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
+  bf512_t round_keys_key[(VISTRUTITH_ENC_CSTRNTS_STEPS + 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u];
+  bf512_t p_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
+  bf512_t a_key[VISTRUTAH_512_BLOCK_SIZE];
+  bf512_t a_sq_key[VISTRUTAH_512_BLOCK_SIZE];
+  bf512_t z_norm_round_key[VISTRUTAH_512_BLOCK_SIZE];
+  vistrutith_fixed_key_verifier_cache_t fixed_key_cache;
+  bf512_t y_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
+  bf512_t z0_key[VISTRUTAH_512_BLOCK_SIZE], z1_key[VISTRUTAH_512_BLOCK_SIZE];
+} vistrutith_enc_verifier_workspace_t;
 
 void vistrutith_enc_constraints_verifier(
     bf512_t z_norm_key[VISTRUTITH_ENC_CSTRNTS_NORM_LEN],
@@ -1246,33 +1332,33 @@ void vistrutith_enc_constraints_verifier(
     bf512_t z_io1_key[VISTRUTITH_ENC_CSTRNTS_IO_LEN],
     const bf512_t in_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
     const bf512_t out_key[VISTRUTAH_512_BLOCK_SIZE * 8u],
-    const bf512_t w_key[VISTRUTAH_WITNESS_TOTAL_BYTES * 8u]) {
+    const bf512_t w_key[VISTRUTAH_WITNESS_TOTAL_BYTES * 8u], bf512_t delta) {
+  vistrutith_enc_verifier_workspace_t* workspace = malloc(sizeof(*workspace));
+  if (!workspace) {
+    abort();
+  }
+
   const unsigned int steps = VISTRUTITH_ENC_CSTRNTS_STEPS;
   unsigned int norm_off = 0u;
   unsigned int io_off = 0u;
 
-  bf512_t fixed_key_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
-  bf512_t round_keys_key[(VISTRUTITH_ENC_CSTRNTS_STEPS + 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u];
 
-  bf512_t p_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
-  bf512_t a_key[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t a_sq_key[VISTRUTAH_512_BLOCK_SIZE];
-  bf512_t z_norm_round_key[VISTRUTAH_512_BLOCK_SIZE];
 
-  memcpy(fixed_key_key, w_key, VISTRUTAH_WITNESS_KEY_BYTES * 8u * sizeof(*w_key));
-  vistrutith_shuffle_key_verifier(fixed_key_key);
+  memcpy(workspace->fixed_key_key, w_key, VISTRUTAH_WITNESS_KEY_BYTES * 8u * sizeof(*w_key));
+  vistrutith_shuffle_key_verifier(workspace->fixed_key_key);
+  vistrutith_fixed_key_verifier_cache_init(&workspace->fixed_key_cache, workspace->fixed_key_key, delta);
 
   {
-    bf512_t* rk0_key = round_keys_key;
-    memcpy(rk0_key + 0u * 128u, fixed_key_key + 1u * 128u, 128u * sizeof(*rk0_key));
-    memcpy(rk0_key + 1u * 128u, fixed_key_key + 0u * 128u, 128u * sizeof(*rk0_key));
-    memcpy(rk0_key + 2u * 128u, fixed_key_key + 3u * 128u, 128u * sizeof(*rk0_key));
-    memcpy(rk0_key + 3u * 128u, fixed_key_key + 2u * 128u, 128u * sizeof(*rk0_key));
+    bf512_t* rk0_key = workspace->round_keys_key;
+    memcpy(rk0_key + 0u * 128u, workspace->fixed_key_key + 1u * 128u, 128u * sizeof(*rk0_key));
+    memcpy(rk0_key + 1u * 128u, workspace->fixed_key_key + 0u * 128u, 128u * sizeof(*rk0_key));
+    memcpy(rk0_key + 2u * 128u, workspace->fixed_key_key + 3u * 128u, 128u * sizeof(*rk0_key));
+    memcpy(rk0_key + 3u * 128u, workspace->fixed_key_key + 2u * 128u, 128u * sizeof(*rk0_key));
   }
 
   for (unsigned int j = 1u; j <= steps; ++j) {
-    bf512_t* rk_key = round_keys_key + j * VISTRUTAH_512_BLOCK_SIZE * 8u;
-    const bf512_t* prev_key = round_keys_key + (j - 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u;
+    bf512_t* rk_key = workspace->round_keys_key + j * VISTRUTAH_512_BLOCK_SIZE * 8u;
+    const bf512_t* prev_key = workspace->round_keys_key + (j - 1u) * VISTRUTAH_512_BLOCK_SIZE * 8u;
     memcpy(rk_key, prev_key, VISTRUTAH_512_BLOCK_SIZE * 8u * sizeof(*rk_key));
     vistrutith_rotate_bytes_verifier(rk_key + 0u, 5, 16);
     vistrutith_rotate_bytes_verifier(rk_key + 16u * 8u, 10, 16);
@@ -1281,13 +1367,13 @@ void vistrutith_enc_constraints_verifier(
   }
 
   for (unsigned int i = 0; i < VISTRUTAH_512_BLOCK_SIZE * 8u; ++i) {
-    p_key[i] = bf512_add(in_key[i], round_keys_key[i]);
+    workspace->p_key[i] = bf512_add(in_key[i], workspace->round_keys_key[i]);
   }
 
-  vistrutith_forward_by_norm_verifier(
-      a_key, a_sq_key, z_norm_round_key, p_key, w_key + VISTRUTAH_WITNESS_KEY_BYTES * 8u,
-      fixed_key_key);
-  memcpy(z_norm_key + norm_off, z_norm_round_key, sizeof(z_norm_round_key));
+  vistrutith_forward_by_norm_verifier_cached(
+      workspace->a_key, workspace->a_sq_key, workspace->z_norm_round_key, workspace->p_key, w_key + VISTRUTAH_WITNESS_KEY_BYTES * 8u,
+      &workspace->fixed_key_cache, delta);
+  memcpy(z_norm_key + norm_off, workspace->z_norm_round_key, sizeof(workspace->z_norm_round_key));
   norm_off += VISTRUTAH_512_BLOCK_SIZE;
 
   for (unsigned int i = 1u; i < steps; ++i) {
@@ -1299,35 +1385,32 @@ void vistrutith_enc_constraints_verifier(
     const bf512_t* m_key = w_key + mi_off * 8u;
     const bf512_t* n_key = m_key + VISTRUTAH_TRACE_ROUND_BYTES * 8u;
     const uint8_t* rc = ROUND_CONSTANTS + 16u * (i - 1u);
-    const bf512_t* round_key_key = round_keys_key + i * VISTRUTAH_512_BLOCK_SIZE * 8u;
+    const bf512_t* round_key_key = workspace->round_keys_key + i * VISTRUTAH_512_BLOCK_SIZE * 8u;
 
-    bf512_t y_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
-    bf512_t z0_key[VISTRUTAH_512_BLOCK_SIZE], z1_key[VISTRUTAH_512_BLOCK_SIZE];
 
-    vistrutith_backward_zerornd_by_bits_verifier(y_key, m_key, round_key_key, rc);
-    vistrutith_append_cstrnts_by_bits_verifier(z0_key, z1_key, a_key, a_sq_key, y_key);
-    memcpy(z_io0_key + io_off, z0_key, sizeof(z0_key));
-    memcpy(z_io1_key + io_off, z1_key, sizeof(z1_key));
+    vistrutith_backward_zerornd_by_bits_verifier(workspace->y_key, m_key, round_key_key, rc, delta);
+    vistrutith_append_cstrnts_by_bits_verifier(workspace->z0_key, workspace->z1_key, workspace->a_key, workspace->a_sq_key, workspace->y_key, delta);
+    memcpy(z_io0_key + io_off, workspace->z0_key, sizeof(workspace->z0_key));
+    memcpy(z_io1_key + io_off, workspace->z1_key, sizeof(workspace->z1_key));
     io_off += VISTRUTAH_512_BLOCK_SIZE;
 
-    vistrutith_forward_by_norm_verifier(a_key, a_sq_key, z_norm_round_key, m_key, n_key,
-                                        fixed_key_key);
-    memcpy(z_norm_key + norm_off, z_norm_round_key, sizeof(z_norm_round_key));
+    vistrutith_forward_by_norm_verifier_cached(workspace->a_key, workspace->a_sq_key, workspace->z_norm_round_key, m_key, n_key,
+                                        &workspace->fixed_key_cache, delta);
+    memcpy(z_norm_key + norm_off, workspace->z_norm_round_key, sizeof(workspace->z_norm_round_key));
     norm_off += VISTRUTAH_512_BLOCK_SIZE;
   }
 
   {
-    const bf512_t* round_key_key = round_keys_key + steps * VISTRUTAH_512_BLOCK_SIZE * 8u;
-    bf512_t y_key[VISTRUTAH_512_BLOCK_SIZE * 8u];
-    bf512_t z0_key[VISTRUTAH_512_BLOCK_SIZE], z1_key[VISTRUTAH_512_BLOCK_SIZE];
+    const bf512_t* round_key_key = workspace->round_keys_key + steps * VISTRUTAH_512_BLOCK_SIZE * 8u;
 
-    vistrutith_backward_finalrnd_by_bits_verifier(y_key, out_key, round_key_key);
-    vistrutith_append_cstrnts_by_bits_verifier(z0_key, z1_key, a_key, a_sq_key, y_key);
-    memcpy(z_io0_key + io_off, z0_key, sizeof(z0_key));
-    memcpy(z_io1_key + io_off, z1_key, sizeof(z1_key));
+    vistrutith_backward_finalrnd_by_bits_verifier(workspace->y_key, out_key, round_key_key, delta);
+    vistrutith_append_cstrnts_by_bits_verifier(workspace->z0_key, workspace->z1_key, workspace->a_key, workspace->a_sq_key, workspace->y_key, delta);
+    memcpy(z_io0_key + io_off, workspace->z0_key, sizeof(workspace->z0_key));
+    memcpy(z_io1_key + io_off, workspace->z1_key, sizeof(workspace->z1_key));
     io_off += VISTRUTAH_512_BLOCK_SIZE;
   }
 
   assert(norm_off == VISTRUTITH_ENC_CSTRNTS_NORM_LEN);
   assert(io_off == VISTRUTITH_ENC_CSTRNTS_IO_LEN);
+  free(workspace);
 }

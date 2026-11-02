@@ -3,6 +3,7 @@
 */
 
 #include "sm4.h"
+#include "../macros.h"
 #include "compat.h"
 #include "utils.h"
 #include <stdint.h>
@@ -13,6 +14,7 @@
  *  positions used by the round function)                             *
  * ================================================================== */
 
+#if REF_USE_LOOKUP_TABLES
 static const uint32_t SM4_SBOX_T0[256] = {
     0x8ED55B5B, 0xD0924242, 0x4DEAA7A7, 0x06FDFBFB, 0xFCCF3333, 0x65E28787,
     0xC93DF4F4, 0x6BB5DEDE, 0x4E165858, 0x6EB4DADA, 0x44145050, 0xCAC10B0B,
@@ -197,6 +199,8 @@ static const uint32_t SM4_SBOX_T3[256] = {
     0xD45F5F8B, 0xC82F2FE7, 0x39E4E4DD, 0x49212168
 };
 
+#endif
+
 /* ================================================================== *
  *  Helper utilities                                                   *
  * ================================================================== */
@@ -217,10 +221,15 @@ static uint32_t SM4_T_non_lin_sub(uint32_t X)
 
 static uint32_t SM4_T(uint32_t X)
 {
+#if REF_USE_LOOKUP_TABLES
     return SM4_SBOX_T0[(uint8_t)(X >> 24)]
          ^ SM4_SBOX_T1[(uint8_t)(X >> 16)]
          ^ SM4_SBOX_T2[(uint8_t)(X >>  8)]
          ^ SM4_SBOX_T3[(uint8_t) X       ];
+#else
+    const uint32_t t = SM4_T_non_lin_sub(X);
+    return t ^ rotl32_u(t, 2) ^ rotl32_u(t, 10) ^ rotl32_u(t, 18) ^ rotl32_u(t, 24);
+#endif
 }
 
 static uint32_t SM4_key_sub(uint32_t X)

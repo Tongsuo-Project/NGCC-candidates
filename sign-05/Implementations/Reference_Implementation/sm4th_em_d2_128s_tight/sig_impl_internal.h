@@ -1,3 +1,4 @@
+/* Remove unused internal helpers; public scheme and test entrypoints are retained. */
 /*
 * General internal definitions for the signature implementation, not specific to any particular protocol.
 */
@@ -93,10 +94,7 @@ static inline const uint8_t* dsignature_decom_i(const params_t* params,
          params->ell_bytes + (params->deg - 1) * params->lambda_f_bytes;
 }
 
-static inline const uint8_t* dsignature_a2_tilde(const params_t* params,
-                                                 const uint8_t* base_ptr) {
-  return dsignature_a1_tilde(params, base_ptr) + params->lambda_f_bytes;
-}
+
 
 static inline const uint8_t* dsignature_chall_3(const params_t* params,
                                                 const uint8_t* base_ptr) {
@@ -135,8 +133,9 @@ void hash_challenge_2_update_v_tilde_batch(H2_context_t* h2_ctx, const uint8_t* 
 void hash_challenge_2_finalize(const params_t* params, uint8_t* chall_2,
                                H2_context_t* h2_ctx, const uint8_t* d,
                                unsigned int lambda, unsigned int ell);
+/* Pass the omitted a0 explicitly without changing signature serialization. */
 void hash_challenge_3_init(H2_context_t* h2_ctx, const uint8_t* chall_2,
-                           const uint8_t* a_tilde, unsigned int lambda,
+                           const uint8_t* a0_tilde, const uint8_t* a_tilde, unsigned int lambda,
                            unsigned int deg);
 void hash_challenge_3_final(const params_t* params, uint8_t* chall_3,
                             const H2_context_t* ctx, uint32_t ctr,
@@ -144,10 +143,21 @@ void hash_challenge_3_final(const params_t* params, uint8_t* chall_3,
 void hash_challenge_3_final_batch4(const params_t* params, uint8_t* const chall_3[4],
                                    const H2_context_t* ctx, uint32_t ctr_base,
                                    size_t lane_count, unsigned int lambda);
+/* Verification binds its reconstructed a0 to the same transcript. */
 void hash_challenge_3(const params_t* params, uint8_t* chall_3,
-                      const uint8_t* chall_2, const uint8_t* a_tilde,
+                      const uint8_t* chall_2, const uint8_t* a0_tilde, const uint8_t* a_tilde,
                       const uint8_t* ctr, unsigned int lambda);
 bool check_challenge_3(const uint8_t* chall_3, unsigned int start, unsigned int lambda);
 void free_pointer_array(uint8_t*** ptr);
+
+
+/* Stop after the last four uint32 counters instead of wrapping to zero. */
+static inline bool signature_next_ctr_batch(uint32_t* ctr) {
+  if (*ctr > UINT32_MAX - 4u) {
+    return false;
+  }
+  *ctr += 4u;
+  return true;
+}
 
 #endif

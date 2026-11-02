@@ -25,6 +25,7 @@
 
 #include "fields.h"
 #include "sm4.h"
+#include "macros.h"
 #include <assert.h>
 #include <stdbool.h>
 #include <string.h>
@@ -99,6 +100,7 @@ void sm4_get_enc_state(uint8_t* enc_states, const uint8_t* in, const uint8_t* ex
     }
 }
 
+#if REF_USE_LOOKUP_TABLES
 static const uint8_t SM4_INV_NORM_NIBBLE_LUT[256] = {
   0x9, 0xe, 0x3, 0xa, 0xa, 0x8, 0xa, 0xa, 0xc, 0x8, 0x6, 0x1, 0xf, 0x8, 0x2, 0x4,
   0x5, 0xd, 0xc, 0x7, 0x8, 0x9, 0x9, 0xa, 0x7, 0x4, 0x7, 0x3, 0x3, 0x6, 0x9, 0xf,
@@ -118,7 +120,10 @@ static const uint8_t SM4_INV_NORM_NIBBLE_LUT[256] = {
   0x1, 0x6, 0xe, 0x7, 0xb, 0x1, 0x5, 0xa, 0x8, 0x4, 0xa, 0x4, 0x6, 0x6, 0xf, 0x5
 };
 
+#endif
+
 static uint8_t sm4_inv_norm_nibble(uint8_t sbox_input) {
+#if REF_USE_LOOKUP_TABLES
   /*
    * Convert one SM4 S-box input byte into the 4-bit norm witness stored in w.
    *
@@ -133,6 +138,23 @@ static uint8_t sm4_inv_norm_nibble(uint8_t sbox_input) {
    * patched inverse case in the same way as the old scalar computation.
    */
   return SM4_INV_NORM_NIBBLE_LUT[sbox_input];
+#else
+  /* h = affine(input)^238 = affine(input)^(-17), with 0 mapped to 0.
+   * Recover the GF(16) coordinates in basis (1, 0x0c, 0x50, 0x2a).
+   * The four fixed parity projections are a left inverse of that basis. */
+  const uint8_t x = sm4_affine_byte(sbox_input);
+  const uint8_t x2 = bf8_square_sm4(x);
+  const uint8_t x4 = bf8_square_sm4(x2);
+  const uint8_t x8 = bf8_square_sm4(x4);
+  const uint8_t x16 = bf8_square_sm4(x8);
+  const uint8_t x32 = bf8_square_sm4(x16);
+  const uint8_t x64 = bf8_square_sm4(x32);
+  const uint8_t x128 = bf8_square_sm4(x64);
+  const uint8_t h = bf8_mul_sm4(bf8_mul_sm4(bf8_mul_sm4(x2, x4), x8),
+                                bf8_mul_sm4(bf8_mul_sm4(x32, x64), x128));
+  return (uint8_t)((h & 1u) | (((h >> 2) & 1u) << 1) |
+                   (((h >> 4) & 1u) << 2) | (((h >> 1) & 1u) << 3));
+#endif
 }
 
 // generate 4 norm witness nibble 

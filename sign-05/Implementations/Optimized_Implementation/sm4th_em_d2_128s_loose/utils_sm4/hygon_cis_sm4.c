@@ -1,13 +1,15 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "hygon_cis_sm4.h"
+#include "../compat.h"
 
 #include <setjmp.h>
 #include <signal.h>
 #include <string.h>
 
-static sigjmp_buf hygon_cis_sigill_jmp;
-static volatile sig_atomic_t hygon_cis_sigill_active;
+/* Only the probing thread may jump to its recovery context. */
+static _Thread_local sigjmp_buf hygon_cis_sigill_jmp;
+static _Thread_local volatile sig_atomic_t hygon_cis_sigill_active;
 
 static void hygon_cis_sigill_handler(int signum) {
   if (hygon_cis_sigill_active) {
@@ -53,15 +55,18 @@ static int hygon_cis_sm4_run_selftest(void) {
   return ok;
 }
 
+/* Both public probe entrypoints share one serialized selftest. */
+static int hygon_cis_supported;
+static ref_once_t hygon_cis_once = REF_ONCE_INIT;
+static void hygon_cis_initialize(void) {
+  hygon_cis_supported = hygon_cis_sm4_run_selftest() ? 1 : 0;
+}
+
 int hygon_cis_sm4_selftest(void) {
-  return hygon_cis_sm4_run_selftest();
+  ref_call_once(&hygon_cis_once, hygon_cis_initialize);
+  return hygon_cis_supported;
 }
 
 int hygon_cis_sm4_is_supported(void) {
-  static int cached = -1;
-
-  if (cached < 0) {
-    cached = hygon_cis_sm4_run_selftest() ? 1 : 0;
-  }
-  return cached;
+  return hygon_cis_sm4_selftest();
 }

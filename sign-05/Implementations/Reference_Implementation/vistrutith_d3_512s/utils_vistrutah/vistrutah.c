@@ -1,14 +1,12 @@
+#include "../compat.h"
+#include "../macros.h"
 // The open-source C-ref implementation from https://github.com/jedisct1/vistrutah
 
 #include "vistrutah.h"
-#include "../compat.h"
 #include "../fields.h"
 
-#if defined(SBOX) && SBOX && !defined(SBOX_TABLE)
-#define SBOX_TABLE
-#endif
 
-#ifdef SBOX_TABLE
+#if REF_USE_LOOKUP_TABLES
 static const uint8_t sbox[256] = {
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -42,7 +40,6 @@ static uint32_t aes_s0[256];
 static uint32_t aes_s1[256];
 static uint32_t aes_s2[256];
 static uint32_t aes_s3[256];
-static int      aes_ttables_ready = 0;
 
 static inline uint32_t
 load32_le(const uint8_t src[4])
@@ -70,11 +67,8 @@ xtime8(uint8_t x)
 }
 
 static void
-aes_build_ttables(void)
+aes_build_ttables_initialize(void)
 {
-    if (aes_ttables_ready) {
-        return;
-    }
     for (unsigned int i = 0; i < 256; ++i) {
         const uint8_t s  = compute_sbox_table((uint8_t)i);
         const uint8_t s2 = xtime8(s);
@@ -91,7 +85,12 @@ aes_build_ttables(void)
         aes_s2[i] = (uint32_t)s << 16;
         aes_s3[i] = (uint32_t)s << 24;
     }
-    aes_ttables_ready = 1;
+}
+
+/* Serialize first initialization and publish the read-only table. */
+static void aes_build_ttables(void) {
+  static ref_once_t once = REF_ONCE_INIT;
+  ref_call_once(&once, aes_build_ttables_initialize);
 }
 
 static inline void
@@ -167,37 +166,68 @@ aes_final_round_ttable(uint8_t state[16], const uint8_t round_key[16])
     store32_le(state + 12, n3);
 }
 #else
-static uint8_t
-compute_sbox_compute(uint8_t in)
-{
-    const uint8_t t = bf8_inv(in);
-    uint8_t out = 0;
-    out |= (uint8_t)(parity8(t & 0xf1) << 0);
-    out |= (uint8_t)(parity8(t & 0xe3) << 1);
-    out |= (uint8_t)(parity8(t & 0xc7) << 2);
-    out |= (uint8_t)(parity8(t & 0x8f) << 3);
-    out |= (uint8_t)(parity8(t & 0x1f) << 4);
-    out |= (uint8_t)(parity8(t & 0x3e) << 5);
-    out |= (uint8_t)(parity8(t & 0x7c) << 6);
-    out |= (uint8_t)(parity8(t & 0xf8) << 7);
-    return (uint8_t)(out ^ 0x63);
+/* Eight byte-field elements in independent uint64_t byte lanes.
+ * Fixed operations only: masking prevents cross-lane carries/shifts.
+ * This evaluates the same GF(2^8) inversion and AES affine map as the
+ * scalar field helpers, amortizing the PRG's many S-box calls. */
+static uint64_t vistrutah_gf8_mul_x8(uint64_t a, uint64_t b) {
+    const uint64_t low = UINT64_C(0x0101010101010101);
+    uint64_t out = 0;
+    for (unsigned int i = 0; i < 8; ++i) {
+        out ^= a & ((b & low) * UINT64_C(0xff));
+        a = ((a << 1) & UINT64_C(0xfefefefefefefefe)) ^
+            (((a >> 7) & low) * UINT64_C(0x1b));
+        b = (b >> 1) & UINT64_C(0x7f7f7f7f7f7f7f7f);
+    }
+    return out;
+}
+
+static uint64_t vistrutah_gf8_square_x8(uint64_t x) {
+    const uint64_t low = UINT64_C(0x0101010101010101);
+    const uint64_t b0 = x & low, b1 = (x >> 1) & low;
+    const uint64_t b2 = (x >> 2) & low, b3 = (x >> 3) & low;
+    const uint64_t b4 = (x >> 4) & low, b5 = (x >> 5) & low;
+    const uint64_t b6 = (x >> 6) & low, b7 = (x >> 7) & low;
+    return (b0 ^ b4 ^ b6) | ((b4 ^ b6 ^ b7) << 1) |
+           ((b1 ^ b5) << 2) | ((b4 ^ b5 ^ b6 ^ b7) << 3) |
+           ((b2 ^ b4 ^ b7) << 4) | ((b5 ^ b6) << 5) |
+           ((b3 ^ b5) << 6) | ((b6 ^ b7) << 7);
+}
+
+static uint64_t vistrutah_sbox_x8(uint64_t x) {
+    const uint64_t x2 = vistrutah_gf8_square_x8(x);
+    const uint64_t x3 = vistrutah_gf8_mul_x8(x, x2);
+    const uint64_t x5 = vistrutah_gf8_mul_x8(x3, x2);
+    const uint64_t x7 = vistrutah_gf8_mul_x8(x5, x2);
+    const uint64_t x14 = vistrutah_gf8_square_x8(x7);
+    const uint64_t x28 = vistrutah_gf8_square_x8(x14);
+    const uint64_t x56 = vistrutah_gf8_square_x8(x28);
+    const uint64_t x63 = vistrutah_gf8_mul_x8(x56, x7);
+    const uint64_t x126 = vistrutah_gf8_square_x8(x63);
+    const uint64_t x252 = vistrutah_gf8_square_x8(x126);
+    const uint64_t t = vistrutah_gf8_mul_x8(x252, x2);
+    const uint64_t r1 = ((t << 1) & UINT64_C(0xfefefefefefefefe)) |
+                        ((t >> 7) & UINT64_C(0x0101010101010101));
+    const uint64_t r2 = ((t << 2) & UINT64_C(0xfcfcfcfcfcfcfcfc)) |
+                        ((t >> 6) & UINT64_C(0x0303030303030303));
+    const uint64_t r3 = ((t << 3) & UINT64_C(0xf8f8f8f8f8f8f8f8)) |
+                        ((t >> 5) & UINT64_C(0x0707070707070707));
+    const uint64_t r4 = ((t << 4) & UINT64_C(0xf0f0f0f0f0f0f0f0)) |
+                        ((t >> 4) & UINT64_C(0x0f0f0f0f0f0f0f0f));
+    return t ^ r1 ^ r2 ^ r3 ^ r4 ^ UINT64_C(0x6363636363636363);
 }
 #endif
 
-#ifndef SBOX_TABLE
-static uint8_t
-compute_sbox(uint8_t in)
-{
-    return compute_sbox_compute(in);
-}
-
+#if !REF_USE_LOOKUP_TABLES
 static void
 aes_sub_bytes(uint8_t state[16])
 {
-    for (unsigned int c = 0; c < 4; c++) {
-        for (unsigned int r = 0; r < 4; r++) {
-            state[c * 4 + r] = compute_sbox(state[c * 4 + r]);
-        }
+    /* memcpy supports unaligned byte arrays and either host byte order. */
+    for (unsigned int i = 0; i < 16; i += 8) {
+        uint64_t lanes;
+        memcpy(&lanes, state + i, sizeof(lanes));
+        lanes = vistrutah_sbox_x8(lanes);
+        memcpy(state + i, &lanes, sizeof(lanes));
     }
 }
 
@@ -239,7 +269,7 @@ aes_mix_columns(uint8_t state[16])
 static void
 aes_round(uint8_t state[16], const uint8_t round_key[16])
 {
-#ifdef SBOX_TABLE
+#if REF_USE_LOOKUP_TABLES
     aes_build_ttables();
     aes_round_ttable(state, round_key);
 #else
@@ -258,7 +288,7 @@ vistrutah_aes_round_128(uint8_t state[16], const uint8_t round_key[16])
     aes_round(state, round_key);
 }
 
-#ifndef SBOX_TABLE
+#if !REF_USE_LOOKUP_TABLES
 static void
 aes_round_zero(uint8_t state[16])
 {
@@ -269,7 +299,7 @@ aes_round_zero(uint8_t state[16])
 static void
 aes_final_round(uint8_t state[16], const uint8_t round_key[16])
 {
-#ifdef SBOX_TABLE
+#if REF_USE_LOOKUP_TABLES
     aes_build_ttables();
     aes_final_round_ttable(state, round_key);
 #else
@@ -287,7 +317,7 @@ vistrutah_aes_final_round_128(uint8_t state[16], const uint8_t round_key[16])
     aes_final_round(state, round_key);
 }
 
-#ifdef SBOX_TABLE
+#if REF_USE_LOOKUP_TABLES
 #define aes_round_encrypt aes_round_ttable
 #define aes_round_zero_encrypt aes_round_ttable_zero
 #define aes_final_round_encrypt aes_final_round_ttable
@@ -430,7 +460,7 @@ vistrutah_shuffle_key(uint8_t fixed_key[64])
 void
 vistrutah_512_prepare_key(vistrutah_512_prepared_key_t* prepared, const uint8_t* key)
 {
-#ifdef SBOX_TABLE
+#if REF_USE_LOOKUP_TABLES
     aes_build_ttables();
 #endif
 

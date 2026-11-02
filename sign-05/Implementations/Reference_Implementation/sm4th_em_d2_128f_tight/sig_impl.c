@@ -1,11 +1,20 @@
 #include "sig_impl_internal.h"
+/* Fixed protocol and parameter-instance bytes; no terminator is absorbed.
+ * The label contains only the Chinith namespace and protocol instance.
+ * ASCII: Chinith/sm4th_em_d2_128f_tight
+ */
+static const uint8_t protocol_domain[] = {
+    0x43, 0x68, 0x69, 0x6e, 0x69, 0x74, 0x68, 0x2f, 0x73, 0x6d, 0x34, 0x74,
+    0x68, 0x5f, 0x65, 0x6d, 0x5f, 0x64, 0x32, 0x5f, 0x31, 0x32, 0x38, 0x66,
+    0x5f, 0x74, 0x69, 0x67, 0x68, 0x74,
+};
 #include "utils_sm4/sm4.h"
 #include "sm4th_sm4_128.h"
 #include "auxfunc.h"
 
 int sig_verbose = 0;
 
-// sm4th.Sign line 3: mu = H2_0(pk || msg; 2 * lambda protocol bits).
+// sm4th.Sign line 3: mu = H2_0(D_p || pk || msg; 2 * lambda protocol bits).
 // The concrete output length is selected in H2_output_len().
 void hash_mu(const params_t* params, uint8_t* mu, const uint8_t* owf_input,
              size_t owf_input_size, const uint8_t* owf_output, size_t owf_output_size,
@@ -13,6 +22,8 @@ void hash_mu(const params_t* params, uint8_t* mu, const uint8_t* owf_input,
   (void)lambda;
   H2_context_t h1_ctx;
   H2_init(&h1_ctx);
+  /* Prefix the message digest with the fixed protocol domain. */
+  H2_update(&h1_ctx, protocol_domain, sizeof(protocol_domain));
   H2_update(&h1_ctx, owf_input, owf_input_size);
   H2_update(&h1_ctx, owf_output, owf_output_size);
   H2_update(&h1_ctx, msg, msglen);
@@ -28,7 +39,7 @@ void hash_iv(const params_t* params, uint8_t* iv, const uint8_t* iv_pre,
   H4_final(params, &h4_ctx, iv);
 }
 
-// sm4th.Sign: line 4 + line 5, (r, iv) = H3(owf_key, mu, rho), owf_key = sk->owf_key
+// sm4th.Sign: line 4 + line 5, (r, iv_pre) = H3(owf_key, mu, rho), owf_key = sk->owf_key
 void hash_r_iv(const params_t* params, uint8_t* root_key, uint8_t* iv_pre,
                uint8_t* iv, const uint8_t* owf_key, const uint8_t* mu,
                const uint8_t* rho, size_t rho_size, unsigned int lambda) {
@@ -37,6 +48,8 @@ void hash_r_iv(const params_t* params, uint8_t* root_key, uint8_t* iv_pre,
   {
     H3_context_t h3_ctx;
     H3_init(&h3_ctx);
+    /* D_p is bound through mu; H3 directly absorbs
+     * only owf_key, mu and rho, followed by its existing purpose suffix. */
     H3_update(&h3_ctx, owf_key, lambda_bytes);
     H3_update(&h3_ctx, mu, lambda_bytes * 2);
     H3_update(&h3_ctx, rho, rho_size);
@@ -104,13 +117,15 @@ void hash_challenge_2_finalize(const params_t* params, uint8_t* chall_2,
 }
 
 void hash_challenge_3_init(H2_context_t* h2_ctx, const uint8_t* chall_2,
-                           const uint8_t* a_tilde, unsigned int lambda,
+                           const uint8_t* a0_tilde, const uint8_t* a_tilde, unsigned int lambda,
                            unsigned int deg) {
   const unsigned int lambda_bytes = lambda / 8;
   const unsigned int num_a_tilde = deg - 1;
 
   H2_init(h2_ctx);
   H2_update(h2_ctx, chall_2, 3 * lambda_bytes + 8);
+  /* Bind a0 separately, followed by every serialized proof coefficient. */
+  H2_update(h2_ctx, a0_tilde, lambda_bytes);
   H2_update(h2_ctx, a_tilde, lambda_bytes * num_a_tilde);
 }
 
@@ -129,10 +144,10 @@ void hash_challenge_3_final_batch4(const params_t* params, uint8_t* const chall_
 }
 
 void hash_challenge_3(const params_t* params, uint8_t* chall_3,
-                      const uint8_t* chall_2, const uint8_t* a_tilde,
+                      const uint8_t* chall_2, const uint8_t* a0_tilde, const uint8_t* a_tilde,
                       const uint8_t* ctr, unsigned int lambda) {
   H2_context_t h2_ctx;
-  hash_challenge_3_init(&h2_ctx, chall_2, a_tilde, lambda, params->deg);
+  hash_challenge_3_init(&h2_ctx, chall_2, a0_tilde, a_tilde, lambda, params->deg);
   H2_update(&h2_ctx, ctr, sizeof(uint32_t));
   H2_3_final(params, &h2_ctx, chall_3);
 }
@@ -289,12 +304,14 @@ static void chall3_batch4_portable_clear(chall3_batch4_portable_ctx_t* batch_ctx
   batch_ctx->lane_buf = NULL;
 }
 
-void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msg_len,
+int sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t msg_len,
                 const uint8_t* owf_key, const uint8_t* owf_input, const uint8_t* owf_output,
                 const uint8_t* witness, const uint8_t* rho, size_t rholen) {
   const char* proto_name = "sm4th";
   SIG_TSTART(t_sign_total);
   const unsigned int ell           = params->ell;
+  /* Hash the prefix before the final field-and-B-bit mask. */
+  const unsigned int vh_x0_bits = params->ell_hat_bits - params->lambda_f - 8u * UNIVERSAL_HASH_B;
   const unsigned int ell_bytes     = params->ell_bytes;
   const unsigned int lambda        = params->lambda;
   const unsigned int lambda_f      = params->lambda_f;
@@ -345,7 +362,7 @@ void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t
   SIG_PRINT("[%s sign] chall_1 done\n", proto_name);
 
   SIG_TSTART(t_u_tilde);
-  vole_hash(signature_u_tilde(params, sig), chall_1, u, ell, lambda_f);
+  vole_hash(signature_u_tilde(params, sig), chall_1, u, vh_x0_bits, lambda_f);
   SIG_TEND("sign.vole_hash_u_tilde", t_u_tilde);
   SIG_PRINT("[%s sign] u_tilde done\n", proto_name);
 
@@ -354,7 +371,7 @@ void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t
   hash_challenge_2_init(&chall_2_ctx, chall_1, signature_u_tilde(params, sig), lambda_f);
   vole_hash_precomp_t vh_precomp_sign;
   const int has_vh_precomp_sign =
-      vole_hash_precompute_init(&vh_precomp_sign, chall_1, ell, lambda_f);
+      vole_hash_precompute_init(&vh_precomp_sign, chall_1, vh_x0_bits, lambda_f);
   assert(has_vh_precomp_sign);
   (void)has_vh_precomp_sign;
 
@@ -404,7 +421,8 @@ void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t
 
   H2_context_t chall_3_ctx;
   SIG_TSTART(t_chall_3);
-  hash_challenge_3_init(&chall_3_ctx, chall_2, signature_a1_tilde(params, sig), lambda_f,
+  /* Include the prover a0 before the serialized a1..a(d-1). */
+  hash_challenge_3_init(&chall_3_ctx, chall_2, a0_tilde, signature_a1_tilde(params, sig), lambda_f,
                         params->deg);
 
   uint8_t chall_3_batch[4][params->lambda_f_bytes];
@@ -414,6 +432,7 @@ void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t
   assert(decoded_chall_3);
 
   uint32_t ctr = 0;
+  bool signing_ok = false;
   chall3_batch4_portable_ctx_t chall3_batch_ctx;
   const bool use_chall3_batch_portable =
       chall3_batch4_portable_init(params, &chall_3_ctx, &chall3_batch_ctx);
@@ -435,6 +454,7 @@ void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t
       if (bavc_open(params, signature_decom_i(params, sig), &bavc, decoded_chall_3)) {
         memcpy(signature_chall_3(params, sig), chall_3, lambda_f_bytes);
         ctr += (uint32_t)lane;
+        signing_ok = true;
         done = true;
         break;
       }
@@ -443,7 +463,10 @@ void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t
     if (done) {
       break;
     }
-    ctr += 4u;
+    /* Failed grinding and opening trials share one bounded counter. */
+    if (!signature_next_ctr_batch(&ctr)) {
+      break;
+    }
   }
   if (use_chall3_batch_portable) {
     chall3_batch4_portable_clear(&chall3_batch_ctx);
@@ -466,6 +489,10 @@ void sm4th_sign(const params_t* params, uint8_t* sig, const uint8_t* msg, size_t
 
   SIG_TEND("sign.total", t_sign_total);
   SIG_PRINT("[%s sign] end\n", proto_name);
+  if (!signing_ok) {
+    memset(sig, 0, params->sig_size);
+  }
+  return signing_ok ? 0 : -1;
 }
 
 int sm4th_verify(const params_t* params, const uint8_t* msg, size_t msglen,
@@ -473,6 +500,8 @@ int sm4th_verify(const params_t* params, const uint8_t* msg, size_t msglen,
   const char* proto_name = "sm4th";
   SIG_TSTART(t_verify_total);
   const unsigned int ell           = params->ell;
+  /* Hash the prefix before the final field-and-B-bit mask. */
+  const unsigned int vh_x0_bits = params->ell_hat_bits - params->lambda_f - 8u * UNIVERSAL_HASH_B;
   const unsigned int lambda        = params->lambda;
   const unsigned int lambda_f      = params->lambda_f;
   const unsigned int lambda_f_bytes = params->lambda_f_bytes;
@@ -535,7 +564,7 @@ int sm4th_verify(const params_t* params, const uint8_t* msg, size_t msglen,
   H2_context_t chall_2_ctx;
   hash_challenge_2_init(&chall_2_ctx, chall_1, dsignature_u_tilde(params, sig), lambda_f);
   vole_hash_precomp_t vh_precomp;
-  const int has_vh_precomp = vole_hash_precompute_init(&vh_precomp, chall_1, ell, lambda_f);
+  const int has_vh_precomp = vole_hash_precompute_init(&vh_precomp, chall_1, vh_x0_bits, lambda_f);
   assert(has_vh_precomp);
   (void)has_vh_precomp;
 
@@ -588,7 +617,8 @@ int sm4th_verify(const params_t* params, const uint8_t* msg, size_t msglen,
   uint8_t* chall_3 = malloc(lambda_f_bytes);
   assert(chall_3);
   SIG_TSTART(t_hash_chall3);
-  hash_challenge_3(params, chall_3, chall_2, dsignature_a1_tilde(params, sig),
+  /* Include the independently reconstructed verifier a0. */
+  hash_challenge_3(params, chall_3, chall_2, a0_tilde, dsignature_a1_tilde(params, sig),
                    dsignature_ctr(params, sig), lambda_f);
   SIG_TEND("verify.hash_challenge_3.pseudoXOF_lambda", t_hash_chall3);
   SIG_PRINT("[%s verify] chall_3 done\n", proto_name);
