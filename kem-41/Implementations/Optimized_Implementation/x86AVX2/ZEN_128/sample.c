@@ -122,121 +122,69 @@ void cbd2(int16_t *r, const uint8_t *buf)
     }
 }
 
+static inline __m256i unpack16_bits(const uint8_t *buf,
+                                    const __m256i bitmask,
+                                    const __m256i zero,
+                                    const __m256i one)
+{
+    uint16_t w = (uint16_t)buf[0] | ((uint16_t)buf[1] << 8);
+    __m256i x = _mm256_set1_epi16((int16_t)w);
+
+    x = _mm256_and_si256(x, bitmask);
+    x = _mm256_cmpeq_epi16(x, zero);
+    return _mm256_andnot_si256(x, one);
+}
+
 void tenary1_8(int16_t *r, const uint8_t *buf)
 {
     unsigned int i;
-    ALIGN32 int16_t t[ZEN_N * 3];
+    const unsigned int plane_bytes = ZEN_N / 8;
+    const __m256i zero = _mm256_setzero_si256();
+    const __m256i one = _mm256_set1_epi16(1);
+    const __m256i bitmask = _mm256_setr_epi16(
+        0x0001, 0x0002, 0x0004, 0x0008,
+        0x0010, 0x0020, 0x0040, 0x0080,
+        0x0100, 0x0200, 0x0400, 0x0800,
+        0x1000, 0x2000, 0x4000, (int16_t)0x8000
+    );
 
-    poly_byte2bit_unpack(t, buf, ZEN_N * 3);
-
-    const int16_t *t0 = t;
-    const int16_t *t1 = t + ZEN_N;
-    const int16_t *t2 = t + 2 * ZEN_N;
-    __m256i a0, a1, a2, a3;
-    __m256i b0, b1, b2, b3;
-    __m256i c0, c1, c2, c3;
-
-    for(i = 0; i < ZEN_N; i += 64)
+    for(i = 0; i < ZEN_N; i += 16)
     {
-        a0 = _mm256_load_si256((const __m256i *)(t0 + i +  0));
-        a1 = _mm256_load_si256((const __m256i *)(t0 + i + 16));
-        a2 = _mm256_load_si256((const __m256i *)(t0 + i + 32));
-        a3 = _mm256_load_si256((const __m256i *)(t0 + i + 48));
+        __m256i a = unpack16_bits(buf + i/8, bitmask, zero, one);
+        __m256i b = unpack16_bits(buf + plane_bytes + i/8, bitmask, zero, one);
+        __m256i c = unpack16_bits(buf + 2*plane_bytes + i/8, bitmask, zero, one);
 
-        b0 = _mm256_load_si256((const __m256i *)(t1 + i +  0));
-        b1 = _mm256_load_si256((const __m256i *)(t1 + i + 16));
-        b2 = _mm256_load_si256((const __m256i *)(t1 + i + 32));
-        b3 = _mm256_load_si256((const __m256i *)(t1 + i + 48));
-
-        c0 = _mm256_load_si256((const __m256i *)(t2 + i +  0));
-        c1 = _mm256_load_si256((const __m256i *)(t2 + i + 16));
-        c2 = _mm256_load_si256((const __m256i *)(t2 + i + 32));
-        c3 = _mm256_load_si256((const __m256i *)(t2 + i + 48));
-
-        a0 = _mm256_sub_epi16(a0, b0);
-        a1 = _mm256_sub_epi16(a1, b1);
-        a2 = _mm256_sub_epi16(a2, b2);
-        a3 = _mm256_sub_epi16(a3, b3);
-
-        a0 = _mm256_mullo_epi16(a0, c0);
-        a1 = _mm256_mullo_epi16(a1, c1);
-        a2 = _mm256_mullo_epi16(a2, c2);
-        a3 = _mm256_mullo_epi16(a3, c3);
-
-        _mm256_store_si256((__m256i *)(r + i +  0), a0);
-        _mm256_store_si256((__m256i *)(r + i + 16), a1);
-        _mm256_store_si256((__m256i *)(r + i + 32), a2);
-        _mm256_store_si256((__m256i *)(r + i + 48), a3);
+        a = _mm256_sub_epi16(a, b);
+        a = _mm256_mullo_epi16(a, c);
+        _mm256_store_si256((__m256i *)(r + i), a);
     }
 }
 
 void tenary3_32(int16_t *r, const uint8_t *buf)
 {
     unsigned int i;
-    ALIGN32 int16_t t[ZEN_N * 5];
-    poly_byte2bit_unpack(t, buf, ZEN_N * 5);
+    const unsigned int plane_bytes = ZEN_N / 8;
+    const __m256i zero = _mm256_setzero_si256();
+    const __m256i one = _mm256_set1_epi16(1);
+    const __m256i bitmask = _mm256_setr_epi16(
+        0x0001, 0x0002, 0x0004, 0x0008,
+        0x0010, 0x0020, 0x0040, 0x0080,
+        0x0100, 0x0200, 0x0400, 0x0800,
+        0x1000, 0x2000, 0x4000, (int16_t)0x8000
+    );
 
-    const int16_t *t0 = t;
-    const int16_t *t1 = t + ZEN_N;
-    const int16_t *t2 = t + 2 * ZEN_N;
-    const int16_t *t3 = t + 3 * ZEN_N;
-    const int16_t *t4 = t + 4 * ZEN_N;
-    __m256i a0, a1, a2, a3;
-    __m256i b0, b1, b2, b3;
-    __m256i c0, c1, c2, c3;
-    __m256i d0, d1, d2, d3;
-    __m256i e0, e1, e2, e3;
-
-    for(i = 0; i < ZEN_N; i += 64)
+    for(i = 0; i < ZEN_N; i += 16)
     {
-        a0 = _mm256_load_si256((const __m256i *)(t0 + i +  0));
-        a1 = _mm256_load_si256((const __m256i *)(t0 + i + 16));
-        a2 = _mm256_load_si256((const __m256i *)(t0 + i + 32));
-        a3 = _mm256_load_si256((const __m256i *)(t0 + i + 48));
+        __m256i a = unpack16_bits(buf + i/8, bitmask, zero, one);
+        __m256i b = unpack16_bits(buf + plane_bytes + i/8, bitmask, zero, one);
+        __m256i c = unpack16_bits(buf + 2*plane_bytes + i/8, bitmask, zero, one);
+        __m256i d = unpack16_bits(buf + 3*plane_bytes + i/8, bitmask, zero, one);
+        __m256i e = unpack16_bits(buf + 4*plane_bytes + i/8, bitmask, zero, one);
 
-        b0 = _mm256_load_si256((const __m256i *)(t1 + i +  0));
-        b1 = _mm256_load_si256((const __m256i *)(t1 + i + 16));
-        b2 = _mm256_load_si256((const __m256i *)(t1 + i + 32));
-        b3 = _mm256_load_si256((const __m256i *)(t1 + i + 48));
-
-        c0 = _mm256_load_si256((const __m256i *)(t2 + i +  0));
-        c1 = _mm256_load_si256((const __m256i *)(t2 + i + 16));
-        c2 = _mm256_load_si256((const __m256i *)(t2 + i + 32));
-        c3 = _mm256_load_si256((const __m256i *)(t2 + i + 48));
-
-        d0 = _mm256_load_si256((const __m256i *)(t3 + i +  0));
-        d1 = _mm256_load_si256((const __m256i *)(t3 + i + 16));
-        d2 = _mm256_load_si256((const __m256i *)(t3 + i + 32));
-        d3 = _mm256_load_si256((const __m256i *)(t3 + i + 48));
-
-        e0 = _mm256_load_si256((const __m256i *)(t4 + i +  0));
-        e1 = _mm256_load_si256((const __m256i *)(t4 + i + 16));
-        e2 = _mm256_load_si256((const __m256i *)(t4 + i + 32));
-        e3 = _mm256_load_si256((const __m256i *)(t4 + i + 48));
-
-        a0 = _mm256_and_si256(a0, b0);
-        a1 = _mm256_and_si256(a1, b1);
-        a2 = _mm256_and_si256(a2, b2);
-        a3 = _mm256_and_si256(a3, b3);
-
-        c0 = _mm256_and_si256(c0, d0);
-        c1 = _mm256_and_si256(c1, d1);
-        c2 = _mm256_and_si256(c2, d2);
-        c3 = _mm256_and_si256(c3, d3);
-
-        a0 = _mm256_sub_epi16(a0, c0);
-        a1 = _mm256_sub_epi16(a1, c1);
-        a2 = _mm256_sub_epi16(a2, c2);
-        a3 = _mm256_sub_epi16(a3, c3);
-
-        a0 = _mm256_mullo_epi16(a0, e0);
-        a1 = _mm256_mullo_epi16(a1, e1);
-        a2 = _mm256_mullo_epi16(a2, e2);
-        a3 = _mm256_mullo_epi16(a3, e3);
-
-        _mm256_store_si256((__m256i *)(r + i +  0), a0);
-        _mm256_store_si256((__m256i *)(r + i + 16), a1);
-        _mm256_store_si256((__m256i *)(r + i + 32), a2);
-        _mm256_store_si256((__m256i *)(r + i + 48), a3);
+        a = _mm256_and_si256(a, b);
+        c = _mm256_and_si256(c, d);
+        a = _mm256_sub_epi16(a, c);
+        a = _mm256_mullo_epi16(a, e);
+        _mm256_store_si256((__m256i *)(r + i), a);
     }
 }

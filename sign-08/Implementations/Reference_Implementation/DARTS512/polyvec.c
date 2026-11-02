@@ -265,7 +265,8 @@ void polyveck_caddq(polyveck *r) {
 /*************************************************
  * Name:        polyveck_sqnorm2
  *
- * Description: Compute squared l2-norm of vector of polynomials of length K
+ * Description: Compute squared l2-norm of the centered representatives of a
+ *              vector of polynomials of length K
  *
  * Arguments:   - const polyveck *r: pointer to input vector
  *
@@ -275,9 +276,12 @@ uint64_t polyveck_sqnorm2(const polyveck *r) {
     unsigned int i, j;
     uint64_t sqnorm = 0;
 
-    for (i = 0; i < K; ++i)
-        for (j = 0; j < N; ++j)
-            sqnorm += (uint64_t)r->vec[i].coeffs[j] * r->vec[i].coeffs[j];
+    for (i = 0; i < K; ++i) {
+        for (j = 0; j < N; ++j) {
+            int64_t t = freeze_centered(r->vec[i].coeffs[j]);
+            sqnorm += (uint64_t)(t * t);
+        }
+    }
 
     return sqnorm;
 }
@@ -557,7 +561,8 @@ void polyvecl_cneg(polyvecl *v, const uint8_t b) {
 /*************************************************
  * Name:        polyvecl_sqnorm2
  *
- * Description: Compute squared l2-norm of vector of polynomials of length L
+ * Description: Compute squared l2-norm of the centered representatives of a
+ *              vector of polynomials of length L
  *
  * Arguments:   - const polyvecl *r: pointer to input vector
  *
@@ -567,9 +572,12 @@ uint64_t polyvecl_sqnorm2(const polyvecl *r) {
     unsigned int i, j;
     uint64_t sqnorm = 0;
 
-    for (i = 0; i < L; ++i)
-        for (j = 0; j < N; ++j)
-            sqnorm += (uint64_t)r->vec[i].coeffs[j] * r->vec[i].coeffs[j];
+    for (i = 0; i < L; ++i) {
+        for (j = 0; j < N; ++j) {
+            int64_t t = freeze_centered(r->vec[i].coeffs[j]);
+            sqnorm += (uint64_t)(t * t);
+        }
+    }
 
     return sqnorm;
 }
@@ -617,26 +625,24 @@ void polyvecl_1_basemul_acc_montgomery(poly *r, const polyvecl_1 *a, const polyv
 /*************************************************
  * Name:        minmax
  *
- * Description: Safely swap two 32-bit integers such that the first becomes
+ * Description: Safely swap two 64-bit integers such that the first becomes
  *              the minimum and the second becomes the maximum.
  *              Branchless implementation to resist timing attacks.
  *
- * Arguments:   - int32_t *x: pointer to the first integer
+ * Arguments:   - int64_t *x: pointer to the first integer
  *                             (stores the smaller value on return)
- *              - int32_t *y: pointer to the second integer
+ *              - int64_t *y: pointer to the second integer
  *                             (stores the larger value on return)
  **************************************************/
-static inline void minmax(int32_t *x, int32_t *y) // djbsort
+static inline void minmax(int64_t *x, int64_t *y)
 {
-    int32_t a = *x;      
-    int32_t b = *y;     
-    int32_t ab = b ^ a;   
-    int32_t c = b - a;   
-    c ^= ab & (c ^ b);  
-    c >>= 31;              
-    c &= ab;              
-    *x = a ^ c;           
-    *y = b ^ c;          
+    int64_t a = *x;
+    int64_t b = *y;
+    uint64_t mask = 0U - (uint64_t)(a > b);
+    uint64_t delta = ((uint64_t)a ^ (uint64_t)b) & mask;
+
+    *x = (int64_t)((uint64_t)a ^ delta);
+    *y = (int64_t)((uint64_t)b ^ delta);
 }
 
 /*************************************************
@@ -649,9 +655,9 @@ static inline void minmax(int32_t *x, int32_t *y) // djbsort
  *              - const polyveck *e: pointer to error vector
  **************************************************/
 int64_t polyveckl_sqsing_value(const poly *s0, const polyvecl_1 *s1, const polyveck *e) {
-    int32_t res = 0;
+    int64_t res = 0;
     complex_fp32_16 input[FFT_N] = {0};
-    int32_t sum[N] = {0}, bestm[N / TAU + 1] = {0}, min = 0;
+    int64_t sum[N] = {0}, bestm[N / TAU + 1] = {0}, min = 0;
 
     fft_init_and_bitrev(input, s0);
     fft(input);
@@ -690,24 +696,24 @@ int64_t polyveckl_sqsing_value(const poly *s0, const polyvecl_1 *s1, const polyv
     // 找到 bestm 中的最小值
     min = bestm[0];
     for (size_t i = 1; i < N / TAU + 1; ++i) {
-        int32_t temp = bestm[i];
+        int64_t temp = bestm[i];
         minmax(&min, &temp);
     }
     
     // 计算最终结果
     for (size_t i = 0; i < N / TAU + 1; ++i) {
-        int32_t fac = (min - bestm[i]) >> 31;
+        int64_t fac = -(int64_t)(min < bestm[i]);
         fac = 
             (fac & (TAU)) ^ 
             ((~fac) & (N % TAU));
         
-        bestm[i] = (bestm[i] + (1 << 5)) >> 6;
+        bestm[i] = (bestm[i] + ((int64_t)1 << 5)) >> 6;
 
         bestm[i] *= fac;
         res += bestm[i]; 
     }
 
-    return (res + (1 << 9)) >> 10; // 返回 N(s) 的估计值
+    return (res + ((int64_t)1 << 9)) >> 10; // 返回 N(s) 的估计值
 }
 
 /*************************************************

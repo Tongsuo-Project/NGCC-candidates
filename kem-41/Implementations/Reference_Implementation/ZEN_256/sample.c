@@ -10,56 +10,68 @@ File Description: Declares the ZEN key-encapsulation mechanism layer for the opt
 #include "params.h"
 #include "poly.h"
 
-static inline uint32_t load32_littleendian(const uint8_t *a)
-{
-    uint32_t r;
-    r  = (uint32_t)a[0];
-    r |= (uint32_t)a[1] << 8;
-    r |= (uint32_t)a[2] << 16;
-    r |= (uint32_t)a[3] << 24;
-    return r;
-}
-
 void cbd1(int16_t *r, const uint8_t *buf)
 {
-    unsigned int i, j;
-    uint32_t t;
-    int16_t a, b;
+    unsigned int i;
 
-    for(i = 0; i < ZEN_N/16; i++)
+    for(i = 0; i < ZEN_N / 4; i++)
     {
-        t = load32_littleendian(buf+4*i);
-        for(j = 0; j < 16; j++)
-        {
-            a = (t >> (2*j+0)) & 0x1;
-            b = (t >> (2*j+1)) & 0x1;
-            r[16*i+j] = a - b;
-        }
+        uint8_t x = buf[i];
+        r[4*i + 0] = (int16_t)((x & 1) - ((x >> 1) & 1));
+        r[4*i + 1] = (int16_t)(((x >> 2) & 1) - ((x >> 3) & 1));
+        r[4*i + 2] = (int16_t)(((x >> 4) & 1) - ((x >> 5) & 1));
+        r[4*i + 3] = (int16_t)(((x >> 6) & 1) - ((x >> 7) & 1));
     }
 }
 
 void tenary3_16(int16_t *r, const uint8_t *buf)
 {
     unsigned int i;
-    int16_t t[ZEN_N * 4];
 
-    poly_byte2bit_unpack(t, buf, ZEN_N * 4);
-
-    for(i = 0; i < ZEN_N; i++)
+    for(i = 0; i < ZEN_N_LEN_BYTES; i++)
     {
-        r[i] = (t[i] & t[i + ZEN_N]) - (t[i + 2 * ZEN_N] & t[i + 3 * ZEN_N]);
+        uint8_t x0 = buf[i];
+        uint8_t x1 = buf[i + ZEN_N_LEN_BYTES];
+        uint8_t x2 = buf[i + 2*ZEN_N_LEN_BYTES];
+        uint8_t x3 = buf[i + 3*ZEN_N_LEN_BYTES];
+
+#define STORE_TERNARY3_16(j)                                                \
+        r[8*i + (j)] = (int16_t)((((x0 >> (j)) & (x1 >> (j))) & 1)         \
+                                  - (((x2 >> (j)) & (x3 >> (j))) & 1))
+        STORE_TERNARY3_16(0);
+        STORE_TERNARY3_16(1);
+        STORE_TERNARY3_16(2);
+        STORE_TERNARY3_16(3);
+        STORE_TERNARY3_16(4);
+        STORE_TERNARY3_16(5);
+        STORE_TERNARY3_16(6);
+        STORE_TERNARY3_16(7);
+#undef STORE_TERNARY3_16
     }
 }
 
 void tenary1_8(int16_t *r, const uint8_t *buf)
 {
     unsigned int i;
-    int16_t t[ZEN_N * 3];
 
-    poly_byte2bit_unpack(t, buf, ZEN_N * 3);
-
-    for(i = 0; i < ZEN_N; i++)
+    for(i = 0; i < ZEN_N_LEN_BYTES; i++)
     {
-        r[i] = (t[i] - t[i + ZEN_N]) * t[i + 2 * ZEN_N];
+        uint8_t x0 = buf[i];
+        uint8_t x1 = buf[i + ZEN_N_LEN_BYTES];
+        uint8_t x2 = buf[i + 2*ZEN_N_LEN_BYTES];
+
+#define STORE_TERNARY1_8(j)                                                \
+        r[8*i + (j)] = (int16_t)((((x0 >> (j)) & 1)                       \
+                                   - ((x1 >> (j)) & 1))                    \
+                                  * ((x2 >> (j)) & 1))
+        STORE_TERNARY1_8(0);
+        STORE_TERNARY1_8(1);
+        STORE_TERNARY1_8(2);
+        STORE_TERNARY1_8(3);
+        STORE_TERNARY1_8(4);
+        STORE_TERNARY1_8(5);
+        STORE_TERNARY1_8(6);
+        STORE_TERNARY1_8(7);
+#undef STORE_TERNARY1_8
     }
 }

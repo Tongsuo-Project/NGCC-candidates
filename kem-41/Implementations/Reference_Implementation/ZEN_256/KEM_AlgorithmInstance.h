@@ -19,6 +19,9 @@ File Description: Declares the ZEN key-encapsulation mechanism layer for the opt
 #ifndef KEM_ALGORITHM_INSTANCE_H
 #define KEM_ALGORITHM_INSTANCE_H
 
+/* Resource/primitive failure or exhausted key-generation nonces. */
+#define ZEN_ERR_INTERNAL (-4)
+
 // Set "OUTPUT_BLANK_TEST_VECTORS" as 0 to generate test vector files
 // Set "OUTPUT_BLANK_TEST_VECTORS" as 1 to generate blank template (default)
 #define OUTPUT_BLANK_TEST_VECTORS 0
@@ -26,6 +29,15 @@ File Description: Declares the ZEN key-encapsulation mechanism layer for the opt
 // Set "ALGORITHM_INSTANCE" as your algorithm instance name (no more than 64 bytes)
 // Only letters, numbers, '-' or '_' are permitted
 #define ALGORITHM_INSTANCE "ZEN_256"
+
+/*
+ * Byte buffers (pk, sk, ct, ss and seed) may have any byte alignment.
+ * Allocate the documented byte lengths; no SIMD padding is required.
+ * On ZEN_ERR_INTERNAL, output lengths are zero and output key/ct/ss buffers
+ * are cleared. Invalid ciphertexts still use normal implicit rejection.
+ * Check every return value before using outputs.
+ * Length pointers must point to valid unsigned long long objects.
+ */
 
 #ifdef __cplusplus
 extern "C"
@@ -90,7 +102,7 @@ extern "C"
 	/// @param[in] ct_len_bytes Byte length of the ciphertext
 	/// @param[out] ss Shared secret key
 	/// @param[out] ss_len_bytes Byte length of the shared secret key
-	/// @return If decapsulation successfully, return 0; if decapsulation unsuccessfully, return -1; otherwise, return a self-defined negative (-2 to -99) error code
+	/// @return 0 for completed decapsulation (including implicit rejection); negative for API/internal errors
 	int kem_dec(
 		unsigned char *sk, unsigned long long sk_len_bytes,
 		unsigned char *ct, unsigned long long ct_len_bytes,

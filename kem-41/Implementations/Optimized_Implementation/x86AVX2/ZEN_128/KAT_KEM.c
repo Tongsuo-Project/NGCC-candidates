@@ -8,7 +8,7 @@ uninterrupted or error-free in all cases. ICCS will take no responsibility for
 the use of the software or the results thereof, if the software is used for any
 other purposes.
 */
-#define _POSIX_C_SOURCE 200112L
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,24 +24,6 @@ other purposes.
 #include <sys/stat.h>
 #include <sys/types.h>
 #endif
-
-#if defined(_WIN32)
-#include <malloc.h>
-#endif
-
-static void *aligned_calloc_32(size_t n, size_t size)
-{
-    size_t bytes = n * size;
-    void *ptr = NULL;
-
-    if (posix_memalign(&ptr, 32, bytes) != 0)
-        return NULL;
-
-    memset(ptr, 0, bytes);
-    return ptr;
-}
-
-#define aligned_free_32(ptr) free(ptr)
 
 #define SEED_LEN_BYTES 64
 #define KAT_KEM_SUCCESS 0
@@ -76,12 +58,13 @@ int main()
 		return KAT_ALGORITHM_INSTANCE_NAME_INVALID;
 	}
 	// init drng_seed using nonce
-	nonce = (unsigned char *)aligned_calloc_32(SEED_LEN_BYTES, sizeof(unsigned char));
+	nonce = (unsigned char *)calloc(SEED_LEN_BYTES, sizeof(unsigned char));
 	for (int i = 0; i < SEED_LEN_BYTES / 4; i++)
 	{
 		memcpy(nonce + 4 * i, "seed", 4);
 	}
-	init_random_number(&drng_seed, nonce, SEED_LEN_BYTES);
+	if (init_random_number(&drng_seed, nonce, SEED_LEN_BYTES) != 0)
+	    return EXIT_FAILURE;
 	// open KAT_KEM_AlgorithmInstance.txt
 	const char *dir_name = "output";
 	char file_path[128] = "";
@@ -103,24 +86,26 @@ int main()
 	sk_len_bytes = kem_get_sk_len_bytes();
 	ss_len_bytes = kem_get_ss_len_bytes();
 	ct_len_bytes = kem_get_ct_len_bytes();
-	pk = (unsigned char *)aligned_calloc_32(pk_len_bytes, sizeof(unsigned char));
-	sk = (unsigned char *)aligned_calloc_32(sk_len_bytes, sizeof(unsigned char));
-	ss = (unsigned char *)aligned_calloc_32(ss_len_bytes, sizeof(unsigned char));
-	ss1 = (unsigned char *)aligned_calloc_32(ss_len_bytes, sizeof(unsigned char));
-	ct = (unsigned char *)aligned_calloc_32(ct_len_bytes, sizeof(unsigned char));
-	seed = (unsigned char *)aligned_calloc_32(SEED_LEN_BYTES, sizeof(unsigned char));
+	pk = (unsigned char *)calloc(pk_len_bytes, sizeof(unsigned char));
+	sk = (unsigned char *)calloc(sk_len_bytes, sizeof(unsigned char));
+	ss = (unsigned char *)calloc(ss_len_bytes, sizeof(unsigned char));
+	ss1 = (unsigned char *)calloc(ss_len_bytes, sizeof(unsigned char));
+	ct = (unsigned char *)calloc(ct_len_bytes, sizeof(unsigned char));
+	seed = (unsigned char *)calloc(SEED_LEN_BYTES, sizeof(unsigned char));
 	for (int i = 0; i < 10; i++)
 	{
 		fprintf(file_output, "Count = %d\n", i);
 		// generate seed using drng_seed
-		get_random_number(&drng_seed, seed, SEED_LEN_BYTES * 8);
+		if (get_random_number(&drng_seed, seed, SEED_LEN_BYTES * 8) != 0)
+		    return EXIT_FAILURE;
 		// print seed
 		fprintf(file_output, "Seed_Len = %d\n", SEED_LEN_BYTES);
 		fprintstr(file_output, "Seed = ", seed, SEED_LEN_BYTES);
 
 		/****************the KEM scheme starts here****************/
 		// init drng_algorithm using seed
-		init_random_number(&drng_algorithm, seed, SEED_LEN_BYTES);
+		if (init_random_number(&drng_algorithm, seed, SEED_LEN_BYTES) != 0)
+		    return EXIT_FAILURE;
 
 		/****************       Key generate       ****************/
 		rtn = kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes);
@@ -164,13 +149,13 @@ int main()
 		}
 		fprintf(file_output, "\n");
 	}
-	aligned_free_32(seed);
-	aligned_free_32(ct);
-	aligned_free_32(ss1);
-	aligned_free_32(ss);
-	aligned_free_32(sk);
-	aligned_free_32(pk);
-	aligned_free_32(nonce);
+	free(seed);
+	free(ct);
+	free(ss1);
+	free(ss);
+	free(sk);
+	free(pk);
+	free(nonce);
 	// close KAT_KEM_AlgorithmInstance.txt
 	if (0 != fclose(file_output))
 	{

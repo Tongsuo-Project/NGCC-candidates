@@ -429,39 +429,31 @@ uint16_t polyfixveclk_sample_hyperball(polyfixvecl *y1, polyfixveck *y2, uint8_t
 
 
     fp96_76 sqsum, invsqrt;
-    unsigned int i, j;
+    unsigned int i;
     
 
     do {
         sqsum.limb48[0] = 0;
         sqsum.limb48[1] = 0;
 
-//        sample_gauss_N(&samples[0], &signs[0], &sqsum, seed, ni, N + 1);
-        // sample_gauss_N(&samples[N], &signs[N / 8], &sqsum, seed, ni+1, N + 1);
-
-        // for (i = 2; i < L + K; i++){
-        //     sample_gauss_N(&samples[N * i], &signs[N / 8 * i], &sqsum, seed,
-        //                    ni+i, N);
-        // }
-
+        /* Four candidate streams share the AVX2 CDT112 scan.  The SM XOF
+         * itself remains behind the required auxiliary-function interface. */
 #if K == 1 && L == 2
-        sample_gauss_N_4x(  &samples[0],   &samples[N], &samples[2*N], NULL,
-                              &signs[0],   &signs[N/8], &signs[2*N/8], &signs[0],
-                          &sqsum, seed, 
-                                     ni,          ni+1,          ni+2,          ni,
-                                    N+1,           N+1,             N,             0);
-
-
+        sample_gauss_N_4x(&samples[0], &samples[N], &samples[2 * N], NULL,
+                          &signs[0], &signs[N / 8], &signs[2 * N / 8],
+                          &signs[0], &sqsum, seed, ni, ni + 1, ni + 2, ni,
+                          N + 1, N + 1, N, 0);
 #elif K == 2 && L == 3
-        sample_gauss_N_4x(  &samples[0],   &samples[N], &samples[2*N], &samples[3*N],
-                              &signs[0],   &signs[N/8], &signs[2*N/8], &signs[3*N/8],
-                          &sqsum, seed, 
-                                     ni,          ni+1,          ni+2,          ni+3,
-                                    N+1,           N+1,             N,             N);
-        sample_gauss_N(&samples[4*N], &signs[4*N/8], &sqsum, seed, ni+4, N);
+        sample_gauss_N_4x(&samples[0], &samples[N], &samples[2 * N],
+                          &samples[3 * N], &signs[0], &signs[N / 8],
+                          &signs[2 * N / 8], &signs[3 * N / 8], &sqsum, seed,
+                          ni, ni + 1, ni + 2, ni + 3, N + 1, N + 1, N, N);
+        sample_gauss_N(&samples[4 * N], &signs[4 * N / 8], &sqsum, seed,
+                       ni + 4, N);
+#else
+#error "Unsupported DARTS hyperball dimensions"
 #endif
-
-         ni += K + L;
+        ni += K + L;
 
         // divide sqsum by 2 and approximate inverse square root
         sqsum.limb48[0] += 1; // rounding

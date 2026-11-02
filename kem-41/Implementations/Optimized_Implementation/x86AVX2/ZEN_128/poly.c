@@ -24,165 +24,171 @@ void montmul(__m256i *tmp_c, __m256i *tmp_a, __m256i *tmp_b, __m256i *tmp_Q, __m
     *tmp_c = _mm256_sub_epi16(tmp_c1, tmp_x);
 }
 
-void poly_baseinv_ntt(int16_t *f_inv, const int16_t *f)
+/* NTT inversion via even/odd norms and hierarchical batch inversion.
+ * Adapted from Kim, Cho and Park, "Accelerating NTRU+ Key Generation
+ * via Hierarchical Batch Inversion", Sections III-IV, to q=769.
+ * For a=A(y)+xB(y), y=x^2, use a^-1=(A-xB)/(A^2-yB^2).
+ * Each norm introduces a factor R^-1: a degree-d denominator
+ * is Delta/R^(d-1).  Inverting that stored value and lifting with the
+ * same Montgomery products returns the ordinary, unscaled inverse.
+ * Input coefficients must be in [-768,768], as supplied by poly_ntt_mq.
+ * Noninvertible blocks produce zero; processing still takes the full path.
+ */
+
+static inline __m256i inv_add(__m256i a, __m256i b)
+{ return _mm256_add_epi16(a, b); }
+static inline __m256i inv_sub(__m256i a, __m256i b)
+{ return _mm256_sub_epi16(a, b); }
+static inline __m256i inv_neg(__m256i a)
+{ return _mm256_sub_epi16(_mm256_setzero_si256(), a); }
+static inline __m256i inv_mul(__m256i a, __m256i b)
 {
-    int i = 0;
-    __m256i tmp_Q = _mm256_set1_epi16(769), tmp_QINV = _mm256_set1_epi16(-767),
-            setmont2 = _mm256_set1_epi16(19), setmont3 = _mm256_set1_epi16(173),
-            setmont4 = _mm256_set1_epi16(361), 
-            set2 = _mm256_set1_epi16(342), set4 = _mm256_set1_epi16(684),
-            setn4 = _mm256_set1_epi16(-684), tmp_zeta, tmp_a0, tmp_a1, tmp_a2,
-            tmp_a3, tmp_b0, tmp_b1, tmp_b2, tmp_b3, det, tmp_t, tmp_k, det2, det3;
-    __m128i det0, det1;
-    for(i = 0; i < ZEN_N; i += 64)
+    __m256i lo = _mm256_mullo_epi16(a, b);
+    __m256i hi = _mm256_mulhi_epi16(a, b);
+    __m256i t = _mm256_mullo_epi16(lo, _mm256_set1_epi16(-767));
+    return inv_sub(hi, _mm256_mulhi_epi16(t, _mm256_set1_epi16(769)));
+}
+static inline __m256i inv_reduce(__m256i a)
+{
+    /* Rounded Barrett reduction: |1-769*43/32768|=299/32768.
+     * For every signed 16-bit input, the remainder has magnitude <684.
+     * This preserves the Montgomery scale, without a Montgomery product. */
+    __m256i q = _mm256_mulhrs_epi16(a, _mm256_set1_epi16(43));
+    return inv_sub(a, _mm256_mullo_epi16(q, _mm256_set1_epi16(769)));
+}
+
+/* Fixed addition chain for q-2 = 767: 13 Montgomery products.
+ * Interpreting a as a Montgomery value gives R^2/a; the last product
+ * removes R^2 (R = 171, R^-1 = 9 mod 769).  Zero maps to zero. */
+static inline __m256i inv_scalar(__m256i a)
+{
+    __m256i a2 = inv_mul(a, a);
+    __m256i a3 = inv_mul(a2, a);
+    __m256i a5 = inv_mul(a3, a2);
+    __m256i t = inv_mul(a5, a5);  /* a^10 */
+    __m256i a15 = inv_mul(t, a5);
+    t = inv_mul(a15, a15);     /* a^30 */
+    t = inv_mul(t, t);         /* a^60 */
+    t = inv_mul(t, t);         /* a^120 */
+    t = inv_mul(t, t);         /* a^240 */
+    t = inv_mul(t, a15);       /* a^255 */
+    a3 = inv_mul(t, t);        /* a^510 */
+    t = inv_mul(a3, t);        /* a^765 */
+    t = inv_mul(t, a2);        /* a^767 */
+    return inv_mul(t, _mm256_set1_epi16(9));
+}
+
+/* Eight vectors, four independent two-vector chains, then 4 -> 2 -> 1.
+ * The root uses one fixed 16-lane exponentiation.  Product/recovery
+ * stages use 21 vector Montgomery products (3*(8-1)), excluding masks.
+ * A zero in any lane is isolated from the other seven blocks in it. */
+static void inv_batch(__m256i d[8])
+{
+    __m256i tree[16], zero[8];
+    unsigned int i;
+    for(i = 0; i < 8; i++)
     {
-        tmp_zeta = _mm256_load_si256((__m256i *)(invdata + i / 4));
-        tmp_a0 = _mm256_load_si256((__m256i *)(f + i));
-        tmp_a1 = _mm256_load_si256((__m256i *)(f + i + 16));
-        tmp_a2 = _mm256_load_si256((__m256i *)(f + i + 32));
-        tmp_a3 = _mm256_load_si256((__m256i *)(f + i + 48));
+        __m256i x = inv_reduce(d[i]);
+        zero[i] = _mm256_cmpeq_epi16(x, _mm256_setzero_si256());
+        tree[8 + i] = _mm256_blendv_epi8(x, _mm256_set1_epi16(171), zero[i]);
+    }
+    for(i = 7; i > 0; i--)
+        tree[i] = inv_mul(tree[2 * i], tree[2 * i + 1]);
+    tree[1] = inv_scalar(tree[1]);
+    for(i = 1; i < 8; i++)
+    {
+        __m256i left = tree[2 * i];
+        tree[2 * i] = inv_mul(tree[i], tree[2 * i + 1]);
+        tree[2 * i + 1] = inv_mul(tree[i], left);
+    }
+    for(i = 0; i < 8; i++)
+        d[i] = _mm256_andnot_si256(zero[i], tree[8 + i]);
+}
 
-        montmul(&tmp_b0, &tmp_a2, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a1, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t,  &tmp_t,  &set2,  &tmp_Q,  &tmp_QINV);
-        tmp_b0 = _mm256_add_epi16(tmp_b0, tmp_t);
-        montmul(&tmp_b0, &tmp_b0, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a1, &tmp_a1, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a2, &tmp_Q, &tmp_QINV);
-        tmp_b0 = _mm256_sub_epi16(tmp_b0, tmp_t);
-        montmul(&tmp_b0, &tmp_b0, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a3, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        tmp_b0 = _mm256_sub_epi16(tmp_b0, tmp_t);
-        montmul(&tmp_t, &tmp_a0, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a0, &tmp_Q, &tmp_QINV);
-        tmp_b0 = _mm256_sub_epi16(tmp_b0, tmp_t);
-        montmul(&tmp_b0, &tmp_b0, &setmont3, &tmp_Q, &tmp_QINV);
+/* Fixed-size Karatsuba; square-specific leaves avoid duplicate products.
+ * Norms and lifts are reduced before reuse, bounding their lanes by 769. */
+static inline void inv_square2(__m256i *r, const __m256i *a)
+{
+    __m256i t = inv_mul(a[0], a[1]);
+    r[0] = inv_mul(a[0], a[0]);
+    r[1] = inv_add(t, t);
+    r[2] = inv_mul(a[1], a[1]);
+}
 
-        montmul(&tmp_b1, &tmp_a1, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a0, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &set2, &tmp_Q, &tmp_QINV);
-        tmp_b1 = _mm256_sub_epi16(tmp_b1, tmp_t);
-        montmul(&tmp_b1, &tmp_b1, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a1, &tmp_a1, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a3, &tmp_Q, &tmp_QINV);
-        tmp_b1 = _mm256_sub_epi16(tmp_b1, tmp_t);
-        montmul(&tmp_b1, &tmp_b1, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a3, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        tmp_b1 = _mm256_add_epi16(tmp_b1, tmp_t);
-        montmul(&tmp_t, &tmp_a0, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a1, &tmp_Q, &tmp_QINV);
-        tmp_b1 = _mm256_add_epi16(tmp_b1, tmp_t);
-        montmul(&tmp_b1, &tmp_b1, &setmont3, &tmp_Q, &tmp_QINV);
+static inline void inv_product2(__m256i *r, const __m256i *a, const __m256i *b)
+{
+    __m256i p = inv_mul(a[0], b[0]), q = inv_mul(a[1], b[1]);
+    r[0] = p;
+    r[1] = inv_sub(inv_sub(inv_mul(inv_add(a[0], a[1]), inv_add(b[0], b[1])), p), q);
+    r[2] = q;
+}
 
-        montmul(&tmp_b2, &tmp_a1, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b2, &tmp_b2, &set2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a2, &tmp_a2, &tmp_Q, &tmp_QINV);
-        tmp_b2 = _mm256_sub_epi16(tmp_b2, tmp_t);
-        montmul(&tmp_b2, &tmp_b2, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a3, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a0, &tmp_Q, &tmp_QINV);
-        tmp_b2 = _mm256_sub_epi16(tmp_b2, tmp_t);
-        montmul(&tmp_b2, &tmp_b2, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a0, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a2, &tmp_Q, &tmp_QINV);
-        tmp_b2 = _mm256_add_epi16(tmp_b2, tmp_t);
-        montmul(&tmp_t, &tmp_a1, &tmp_a1, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a0, &tmp_Q, &tmp_QINV);
-        tmp_b2 = _mm256_sub_epi16(tmp_b2, tmp_t);
-        montmul(&tmp_b2, &tmp_b2, &setmont3, &tmp_Q, &tmp_QINV);
+static inline void inv_norm2(__m256i *r, const __m256i *a, const __m256i *factor)
+{
+    __m256i zeta = *factor;
+    r[0] = inv_reduce(inv_sub(inv_mul(a[0], a[0]), inv_mul(inv_mul(a[1], a[1]), zeta)));
+}
 
-        montmul(&tmp_b3, &tmp_a2, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a1, &tmp_a3, &tmp_Q, &tmp_QINV);
-        tmp_b3 = _mm256_sub_epi16(tmp_b3, tmp_t);
-        montmul(&tmp_b3, &tmp_b3, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b3, &tmp_b3, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a1, &tmp_a1, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a1, &tmp_Q, &tmp_QINV);
-        tmp_b3 = _mm256_add_epi16(tmp_b3, tmp_t);
-        montmul(&tmp_t, &tmp_a0, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a1, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &set2, &tmp_Q, &tmp_QINV);
-        tmp_b3 = _mm256_sub_epi16(tmp_b3, tmp_t);
-        montmul(&tmp_t, &tmp_a0, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a3, &tmp_Q, &tmp_QINV);
-        tmp_b3 = _mm256_add_epi16(tmp_b3, tmp_t);
-        montmul(&tmp_b3, &tmp_b3, &setmont3, &tmp_Q, &tmp_QINV);
+static inline void inv_norm4(__m256i *r, const __m256i *a, const __m256i *factor)
+{
+    __m256i zeta = *factor;
+    __m256i even[2], odd[2], pe[3], po[3];
+    even[0] = a[0]; odd[0] = a[1];
+    even[1] = a[2]; odd[1] = a[3];
+    inv_square2(pe, even);
+    inv_square2(po, odd);
+    r[0] = inv_reduce(inv_add(pe[0], inv_mul(inv_sub(pe[2], po[1]), zeta)));
+    r[1] = inv_reduce(inv_add(inv_sub(pe[1], po[0]), inv_mul(inv_neg(po[2]), zeta)));
+}
 
-        montmul(&det, &tmp_a2, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a1, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &set4, &tmp_Q, &tmp_QINV);
-        det = _mm256_sub_epi16(det, tmp_t);
-        montmul(&det, &det, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&det, &det, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a0, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &set2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_k, &tmp_a1, &tmp_a1, &tmp_Q, &tmp_QINV);
-        tmp_t = _mm256_add_epi16(tmp_t, tmp_k);
-        montmul(&tmp_t, &tmp_t, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &set2, &tmp_Q, &tmp_QINV);
-        det = _mm256_add_epi16(tmp_t, det);
-        montmul(&det, &det, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&det, &det, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_a3, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        det = _mm256_sub_epi16(tmp_t, det);
-        montmul(&tmp_t, &tmp_a0, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a0, &tmp_Q, &tmp_QINV);
-        det = _mm256_sub_epi16(det, tmp_t);
-        montmul(&tmp_t, &tmp_a1, &tmp_a3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &set2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_k, &tmp_a2, &tmp_a2, &tmp_Q, &tmp_QINV);
-        tmp_t = _mm256_add_epi16(tmp_t, tmp_k);
-        montmul(&tmp_t, &tmp_t, &set2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_t, &tmp_t, &tmp_a0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_k, &tmp_a0, &tmp_a2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_k, &tmp_k, &setn4, &tmp_Q, &tmp_QINV);
-        montmul(&det2, &tmp_a1, &tmp_a1, &tmp_Q, &tmp_QINV);
-        tmp_k = _mm256_add_epi16(tmp_k, det2);
-        montmul(&tmp_k, &tmp_k, &tmp_a1, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_k, &tmp_k, &tmp_a1, &tmp_Q, &tmp_QINV);
-        tmp_t = _mm256_add_epi16(tmp_t, tmp_k);
-        montmul(&tmp_t, &tmp_t, &tmp_zeta, &tmp_Q, &tmp_QINV);
-        det = _mm256_add_epi16(det, tmp_t);
-        montmul(&det, &det, &setmont4, &tmp_Q, &tmp_QINV);
-        det = _mm256_add_epi16(det, _mm256_and_si256(_mm256_srai_epi16(det, 15), tmp_Q));
-        
-        det0 = _mm256_extracti128_si256(det,0);
-        det2 = _mm256_cvtepi16_epi32(det0);
-        det2 = _mm256_i32gather_epi32(qinv,det2,sizeof(int32_t));
+static inline void inv_lift4(__m256i *r, const __m256i *a,
+                              const __m256i *b, const __m256i *factor)
+{
+    __m256i zeta = *factor;
+    __m256i even[2], odd[2], pe[3], po[3];
+    even[0] = a[0]; odd[0] = a[1];
+    even[1] = a[2]; odd[1] = a[3];
+    inv_product2(pe, even, b);
+    inv_product2(po, odd, b);
+    r[0] = inv_reduce(inv_add(pe[0], inv_mul(pe[2], zeta)));
+    r[1] = inv_reduce(inv_neg(inv_add(po[0], inv_mul(po[2], zeta))));
+    r[2] = inv_reduce(pe[1]);
+    r[3] = inv_reduce(inv_neg(po[1]));
+}
 
-        det1 = _mm256_extracti128_si256(det,1);
-        det3 = _mm256_cvtepi16_epi32(det1);
-        det3 = _mm256_i32gather_epi32(qinv,det3,sizeof(int32_t));
-        det2 = _mm256_packs_epi32(det2,det3);
-        det = _mm256_permute4x64_epi64(det2,0xd8);
+void poly_baseinv_ntt(int16_t *r, const int16_t *a)
+{
+    unsigned int i;
+    __m256i den[8], n2[8][2], t2[2];
+    __m256i av[4], rv[4], zeta;
 
-        montmul(&tmp_b0, &det, &tmp_b0, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b0, &tmp_b0, &setmont2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b1, &det, &tmp_b1, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b1, &tmp_b1, &setmont2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b2, &det, &tmp_b2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b2, &tmp_b2, &setmont2, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b3, &det, &tmp_b3, &tmp_Q, &tmp_QINV);
-        montmul(&tmp_b3, &tmp_b3, &setmont2, &tmp_Q, &tmp_QINV);
-
-        _mm256_storeu_si256((__m256i *)(f_inv + i), tmp_b0);
-        _mm256_storeu_si256((__m256i *)(f_inv + i + 16), tmp_b1);
-        _mm256_storeu_si256((__m256i *)(f_inv + i + 32), tmp_b2);
-        _mm256_storeu_si256((__m256i *)(f_inv + i + 48), tmp_b3);
+    for(i = 0; i < 8; i++)
+    {
+        unsigned int off = 64 * i;
+        zeta = _mm256_load_si256((const __m256i *)(invdata + 16 * i));
+        av[0] = _mm256_loadu_si256((const __m256i *)(a + off + 0));
+        av[1] = _mm256_loadu_si256((const __m256i *)(a + off + 16));
+        av[2] = _mm256_loadu_si256((const __m256i *)(a + off + 32));
+        av[3] = _mm256_loadu_si256((const __m256i *)(a + off + 48));
+        inv_norm4(n2[i], av, &zeta);
+        inv_norm2(den + i, n2[i], &zeta);
+    }
+    inv_batch(den);
+    for(i = 0; i < 8; i++)
+    {
+        unsigned int off = 64 * i;
+        zeta = _mm256_load_si256((const __m256i *)(invdata + 16 * i));
+        av[0] = _mm256_loadu_si256((const __m256i *)(a + off + 0));
+        av[1] = _mm256_loadu_si256((const __m256i *)(a + off + 16));
+        av[2] = _mm256_loadu_si256((const __m256i *)(a + off + 32));
+        av[3] = _mm256_loadu_si256((const __m256i *)(a + off + 48));
+        t2[0] = inv_mul(n2[i][0], den[i]);
+        t2[1] = inv_neg(inv_mul(n2[i][1], den[i]));
+        inv_lift4(rv, av, t2, &zeta);
+        _mm256_storeu_si256((__m256i *)(r + off + 0), rv[0]);
+        _mm256_storeu_si256((__m256i *)(r + off + 16), rv[1]);
+        _mm256_storeu_si256((__m256i *)(r + off + 32), rv[2]);
+        _mm256_storeu_si256((__m256i *)(r + off + 48), rv[3]);
     }
 }
 
@@ -551,16 +557,29 @@ static inline void clmul256_avx2(uint64_t a0, uint64_t a1,
     *p7 = z23;
 }
 
+static inline void mul_packed_in_R2_256(uint64_t a0, uint64_t a1,
+                                        uint64_t a2, uint64_t a3,
+                                        uint64_t b0, uint64_t b1,
+                                        uint64_t b2, uint64_t b3,
+                                        int16_t *res)
+{
+    uint64_t p0, p1, p2, p3, p4, p5, p6, p7;
+
+    clmul256_avx2(a0, a1, a2, a3,
+                  b0, b1, b2, b3,
+                  &p0, &p1, &p2, &p3,
+                  &p4, &p5, &p6, &p7);
+
+    unpack64_bits_avx2(res +   0, p0 ^ p4);
+    unpack64_bits_avx2(res +  64, p1 ^ p5);
+    unpack64_bits_avx2(res + 128, p2 ^ p6);
+    unpack64_bits_avx2(res + 192, p3 ^ p7);
+}
+
 void mul_in_R2_256(int16_t *a, int16_t *b, int16_t *res)
 {
     uint64_t a0, a1, a2, a3;
     uint64_t b0, b1, b2, b3;
-    uint64_t z00, z01, z02, z03;
-    uint64_t z20, z21, z22, z23;
-    uint64_t t0, t1, t2, t3;
-    uint64_t m0, m1, m2, m3;
-    uint64_t p0, p1, p2, p3, p4, p5, p6, p7;
-    uint64_t r0, r1, r2, r3;
 
     a0 = pack64_bits_avx2(a +   0);
     a1 = pack64_bits_avx2(a +  64);
@@ -572,33 +591,31 @@ void mul_in_R2_256(int16_t *a, int16_t *b, int16_t *res)
     b2 = pack64_bits_avx2(b + 128);
     b3 = pack64_bits_avx2(b + 192);
 
-    clmul128_avx2(a0, a1, b0, b1, &z00, &z01, &z02, &z03);
-    clmul128_avx2(a2, a3, b2, b3, &z20, &z21, &z22, &z23);
-    clmul128_avx2(a0 ^ a2, a1 ^ a3, b0 ^ b2, b1 ^ b3, &t0, &t1, &t2, &t3);
+    mul_packed_in_R2_256(a0, a1, a2, a3, b0, b1, b2, b3, res);
+}
 
-    m0 = t0 ^ z00 ^ z20;
-    m1 = t1 ^ z01 ^ z21;
-    m2 = t2 ^ z02 ^ z22;
-    m3 = t3 ^ z03 ^ z23;
+void mul2_in_R2_256(const int16_t *a, const int16_t *c,
+                    const int16_t *b, int16_t *res0, int16_t *res1)
+{
+    uint64_t a0, a1, a2, a3;
+    uint64_t b0, b1, b2, b3;
 
-    p0 = z00;
-    p1 = z01;
-    p2 = z02 ^ m0;
-    p3 = z03 ^ m1;
-    p4 = z20 ^ m2;
-    p5 = z21 ^ m3;
-    p6 = z22;
-    p7 = z23;
+    b0 = pack64_bits_avx2(b +   0);
+    b1 = pack64_bits_avx2(b +  64);
+    b2 = pack64_bits_avx2(b + 128);
+    b3 = pack64_bits_avx2(b + 192);
 
-    r0 = p0 ^ p4;
-    r1 = p1 ^ p5;
-    r2 = p2 ^ p6;
-    r3 = p3 ^ p7;
+    a0 = pack64_bits_avx2(a +   0);
+    a1 = pack64_bits_avx2(a +  64);
+    a2 = pack64_bits_avx2(a + 128);
+    a3 = pack64_bits_avx2(a + 192);
+    mul_packed_in_R2_256(a0, a1, a2, a3, b0, b1, b2, b3, res0);
 
-    unpack64_bits_avx2(res +   0, r0);
-    unpack64_bits_avx2(res +  64, r1);
-    unpack64_bits_avx2(res + 128, r2);
-    unpack64_bits_avx2(res + 192, r3);
+    a0 = pack64_bits_avx2(c +   0);
+    a1 = pack64_bits_avx2(c +  64);
+    a2 = pack64_bits_avx2(c + 128);
+    a3 = pack64_bits_avx2(c + 192);
+    mul_packed_in_R2_256(a0, a1, a2, a3, b0, b1, b2, b3, res1);
 }
 
 #define PREFIX64(X) do {                  \
@@ -797,54 +814,70 @@ void FastInversion(int16_t *f_inv, int16_t *f)
     unpack64_bits_avx2(f_inv + 64, inv1);
 }
 
-void poly_generate_g(int16_t *a, const uint8_t *seed, uint8_t nonce)
+int poly_generate_g(int16_t *a, const uint8_t *seed, uint8_t nonce)
 {
     unsigned int i;
     ALIGN32 uint8_t buf[ZEN_N_LEN_BYTES*5];
-    ALIGN32 int16_t t[ZEN_N*2];
-    zen_pseudoXOF(ZEN_N*5, seed, SEED_LEN_BYTES*8, buf, nonce);
-    cbd1(t, buf);
-    tenary1_8(t+ZEN_N, buf+ZEN_N_LEN_BYTES*2);
-    for(i = 0; i < ZEN_N; i++)
+    ALIGN32 int16_t t[ZEN_N];
+    __m256i x, y;
+
+    if (zen_pseudoXOF(ZEN_N*5, seed, SEED_LEN_BYTES*8, buf, nonce) != 0)
+        return -1;
+    cbd1(a, buf);
+    tenary1_8(t, buf+ZEN_N_LEN_BYTES*2);
+    for(i = 0; i < ZEN_N; i += 16)
     {
-        a[i] = t[i] + t[i+ZEN_N];
+        x = _mm256_load_si256((const __m256i *)(a + i));
+        y = _mm256_load_si256((const __m256i *)(t + i));
+        _mm256_store_si256((__m256i *)(a + i), _mm256_add_epi16(x, y));
     }
+    return 0;
 }
 
-void poly_generate_f(int16_t *a, const uint8_t *seed, uint8_t nonce)
+int poly_generate_f(int16_t *a, const uint8_t *seed, uint8_t nonce)
 {
     ALIGN32 uint8_t buf[ZEN_N_LEN_BYTES*2];
 
-    zen_pseudoXOF(ZEN_N*2, seed, SEED_LEN_BYTES*8, buf, nonce);
+    if (zen_pseudoXOF(ZEN_N*2, seed, SEED_LEN_BYTES*8, buf, nonce) != 0)
+        return -1;
     cbd1(a, buf);
+    return 0;
 }
 
-void poly_generate_s(int16_t *a, const uint8_t *seed, uint8_t nonce)
+int poly_generate_s(int16_t *a, const uint8_t *seed, uint8_t nonce)
 {
     unsigned int i;
     ALIGN32 uint8_t buf[ZEN_N_LEN_BYTES*7];
-    ALIGN32 int16_t t[ZEN_N*2];
-    zen_pseudoXOF(ZEN_N*7, seed, SEED_LEN_BYTES*8, buf, nonce);
-    cbd1(t, buf);
-    tenary3_32(t+ZEN_N, buf+ZEN_N_LEN_BYTES*2);
-    for(i = 0; i < ZEN_N; i++)
+    ALIGN32 int16_t t[ZEN_N];
+    __m256i x, y;
+
+    if (zen_pseudoXOF(ZEN_N*7, seed, SEED_LEN_BYTES*8, buf, nonce) != 0)
+        return -1;
+    cbd1(a, buf);
+    tenary3_32(t, buf+ZEN_N_LEN_BYTES*2);
+    for(i = 0; i < ZEN_N; i += 16)
     {
-        a[i] = t[i] + t[i+ZEN_N];
+        x = _mm256_load_si256((const __m256i *)(a + i));
+        y = _mm256_load_si256((const __m256i *)(t + i));
+        _mm256_store_si256((__m256i *)(a + i), _mm256_add_epi16(x, y));
     }
+    return 0;
 }
 
-void poly_generate_e(int16_t *a, const uint8_t *seed, uint8_t nonce)
+int poly_generate_e(int16_t *a, const uint8_t *seed, uint8_t nonce)
 {
     ALIGN32 uint8_t buf[ZEN_N_LEN_BYTES*4];
 
-    zen_pseudoXOF(ZEN_N*4, seed, SEED_LEN_BYTES*8, buf, nonce);
+    if (zen_pseudoXOF(ZEN_N*4, seed, SEED_LEN_BYTES*8, buf, nonce) != 0)
+        return -1;
     cbd2(a, buf);
+    return 0;
 }
 
 
 void poly_bit2byte_pack(uint8_t *pa, const int16_t *a, const unsigned int n)
 {
-    unsigned int i, j;
+    unsigned int i, j, chunk;
     const unsigned int nbytes = n >> 3;
     const __m256i mask01 = _mm256_set1_epi16(1);
 
@@ -852,7 +885,11 @@ void poly_bit2byte_pack(uint8_t *pa, const int16_t *a, const unsigned int n)
     {
         uint32_t m[8];
 
-        for(j = 0; j < 8; j++)
+        chunk = nbytes - i;
+        if(chunk > 32)
+            chunk = 32;
+
+        for(j = 0; j < chunk / 4; j++)
         {
             const int16_t *src = a + ((i + 4 * j) << 3);
             __m256i x0, x1, y;
@@ -870,18 +907,54 @@ void poly_bit2byte_pack(uint8_t *pa, const int16_t *a, const unsigned int n)
             m[j] = (uint32_t)_mm256_movemask_epi8(y);
         }
 
-        _mm256_storeu_si256((__m256i *)(pa + i),
-            _mm256_setr_epi32(
-                (int)m[0], (int)m[1], (int)m[2], (int)m[3],
-                (int)m[4], (int)m[5], (int)m[6], (int)m[7]
-            )
-        );
+        memcpy(pa + i, m, chunk);
+    }
+}
+
+void poly_xor_bit2byte_pack(uint8_t *pa, const int16_t *a,
+                            const int16_t *b, const unsigned int n)
+{
+    unsigned int i, j, chunk;
+    const unsigned int nbytes = n >> 3;
+    const __m256i mask01 = _mm256_set1_epi16(1);
+
+    for(i = 0; i < nbytes; i += 32)
+    {
+        uint32_t m[8];
+
+        chunk = nbytes - i;
+        if(chunk > 32)
+            chunk = 32;
+
+        for(j = 0; j < chunk / 4; j++)
+        {
+            const unsigned int offset = (i + 4 * j) << 3;
+            __m256i x0, x1, y;
+
+            x0 = _mm256_loadu_si256((const __m256i *)(a + offset));
+            x0 = _mm256_xor_si256(
+                x0, _mm256_loadu_si256((const __m256i *)(b + offset)));
+            x1 = _mm256_loadu_si256((const __m256i *)(a + offset + 16));
+            x1 = _mm256_xor_si256(
+                x1, _mm256_loadu_si256((const __m256i *)(b + offset + 16)));
+
+            x0 = _mm256_and_si256(x0, mask01);
+            x1 = _mm256_and_si256(x1, mask01);
+
+            y = _mm256_packus_epi16(x0, x1);
+            y = _mm256_permute4x64_epi64(y, 0xD8);
+            y = _mm256_slli_epi16(y, 7);
+
+            m[j] = (uint32_t)_mm256_movemask_epi8(y);
+        }
+
+        memcpy(pa + i, m, chunk);
     }
 }
 
 void poly_byte2bit_unpack(int16_t *a, const uint8_t *pa, const unsigned int n)
 {
-    unsigned int i, j;
+    unsigned int i, j, chunk;
     const unsigned int nbytes = n >> 3;
 
     const __m256i zero = _mm256_setzero_si256(), one = _mm256_set1_epi16(1),
@@ -894,7 +967,11 @@ void poly_byte2bit_unpack(int16_t *a, const uint8_t *pa, const unsigned int n)
 
     for(i = 0; i < nbytes; i += 32)
     {
-        for(j = 0; j < 8; j++)
+        chunk = nbytes - i;
+        if(chunk > 32)
+            chunk = 32;
+
+        for(j = 0; j < chunk / 4; j++)
         {
             uint32_t w;
             __m256i x0, x1;
@@ -1030,116 +1107,117 @@ static const uint64_t pack_table[] =
     1, 769, 591361, 454756609, 349707832321
 };
 
+static inline uint64_t pack5_base769(const int16_t *a)
+{
+    return (uint64_t)(uint16_t)a[0]
+         + (uint64_t)(uint16_t)a[1] * pack_table[1]
+         + (uint64_t)(uint16_t)a[2] * pack_table[2]
+         + (uint64_t)(uint16_t)a[3] * pack_table[3]
+         + (uint64_t)(uint16_t)a[4] * pack_table[4];
+}
+
+static inline uint64_t load64_le(const uint8_t *src)
+{
+    uint64_t x;
+    memcpy(&x, src, sizeof(x));
+    return x;
+}
+
+static inline void store64_le(uint8_t *dst, uint64_t x)
+{
+    memcpy(dst, &x, sizeof(x));
+}
+
 void poly_publickey_pack(uint8_t *pa, const int16_t *a)
 {
-    int i, idx;
-    uint64_t tmp[103] = {0}, res[77] = {0};
+    int i, out;
 
-    idx = 0;
-    for(i = 0; i < ZEN_N - 2; i += 5)
+    out = 0;
+    for(i = 0; i < 500; i += 20)
     {
-        tmp[idx] =
-              (uint64_t)(uint16_t)a[i]
-            + (uint64_t)(uint16_t)a[i + 1] * pack_table[1]
-            + (uint64_t)(uint16_t)a[i + 2] * pack_table[2]
-            + (uint64_t)(uint16_t)a[i + 3] * pack_table[3]
-            + (uint64_t)(uint16_t)a[i + 4] * pack_table[4];
-        idx++;
+        uint64_t x0 = pack5_base769(a + i);
+        uint64_t x1 = pack5_base769(a + i + 5);
+        uint64_t x2 = pack5_base769(a + i + 10);
+        uint64_t x3 = pack5_base769(a + i + 15);
+
+        store64_le(pa + out, x0 | ((x3 & 0xFFFFULL) << 48));
+        store64_le(pa + out + 8, x1 | (((x3 >> 16) & 0xFFFFULL) << 48));
+        store64_le(pa + out + 16, x2 | (((x3 >> 32) & 0xFFFFULL) << 48));
+        out += 24;
     }
 
-    tmp[102] =
-          (uint64_t)(uint16_t)a[ZEN_N - 2]
-        + (uint64_t)(uint16_t)a[ZEN_N - 1] * pack_table[1];
-
-    idx = 0;
-    for(i = 0; i < 100; i += 4)
     {
-        uint64_t x0 = tmp[i];
-        uint64_t x1 = tmp[i + 1];
-        uint64_t x2 = tmp[i + 2];
-        uint64_t x3 = tmp[i + 3];
+        uint64_t x0 = pack5_base769(a + 500);
+        uint64_t x1 = pack5_base769(a + 505);
+        uint64_t tail =
+              (uint64_t)(uint16_t)a[ZEN_N - 2]
+            + (uint64_t)(uint16_t)a[ZEN_N - 1] * pack_table[1];
 
-        res[idx++] = x0 | ((x3 & 0xFFFFULL) << 48);
-        res[idx++] = x1 | (((x3 >> 16) & 0xFFFFULL) << 48);
-        res[idx++] = x2 | (((x3 >> 32) & 0xFFFFULL) << 48);
+        uint64_t last = x1 | (((tail >> 16) & 0xFULL) << 48);
+
+        store64_le(pa + out, x0 | ((tail & 0xFFFFULL) << 48));
+        memcpy(pa + out + 8, &last, 7);
     }
+}
 
-    res[idx++] = tmp[100] | ((tmp[102] & 0xFFFFULL) << 48);
-    res[idx++] = tmp[101] | (((tmp[102] >> 16) & 0xFULL) << 48);
+static inline void unpack5_base769(int16_t *a, uint64_t x)
+{
+    const uint64_t div769_m = 374811932576999ULL;
+    uint64_t q;
 
-    memcpy(pa, (const uint8_t *)res, ZEN_INDCPA_PUBLICKEY_LEN_BYTES);
+    q = (uint64_t)(((__uint128_t)x * div769_m) >> 58);
+    a[0] = (int16_t)(x - q * 769ULL);
+    x = q;
+    q = (uint64_t)(((__uint128_t)x * div769_m) >> 58);
+    a[1] = (int16_t)(x - q * 769ULL);
+    x = q;
+    q = (uint64_t)(((__uint128_t)x * div769_m) >> 58);
+    a[2] = (int16_t)(x - q * 769ULL);
+    x = q;
+    q = (uint64_t)(((__uint128_t)x * div769_m) >> 58);
+    a[3] = (int16_t)(x - q * 769ULL);
+    x = q;
+    q = (uint64_t)(((__uint128_t)x * div769_m) >> 58);
+    a[4] = (int16_t)(x - q * 769ULL);
 }
 
 void poly_publickey_unpack(int16_t *a, const uint8_t *pa)
 {
-    int i, idx;
-    uint64_t res[77] = {0}, tmp[103] = {0};
-    const uint64_t MASK48 = 0x0000FFFFFFFFFFFFULL, DIV769_M = 374811932576999ULL;
+    int i, out;
+    const uint64_t mask48 = 0x0000FFFFFFFFFFFFULL;
+    const uint64_t div769_m = 374811932576999ULL;
+    uint64_t x, q, r75, r76;
 
-    memcpy((uint8_t *)res, pa, ZEN_INDCPA_PUBLICKEY_LEN_BYTES);
-
-    idx = 76;
-
-    tmp[101] = res[idx] & MASK48;
-    tmp[102] = ((res[idx--] >> 48) & 0xFULL) << 16;
-
-    tmp[100] = res[idx] & MASK48;
-    tmp[102] |= ((res[idx--] >> 48) & 0xFFFFULL);
-
-    for(i = 99; i > 0; i -= 4)
+    out = 0;
+    for(i = 0; i < 75; i += 3)
     {
-        tmp[i - 1] = res[idx] & MASK48;
-        tmp[i]     = ((res[idx--] >> 48) & 0xFFFFULL) << 32;
+        uint64_t r0 = load64_le(pa + 8*i);
+        uint64_t r1 = load64_le(pa + 8*i + 8);
+        uint64_t r2 = load64_le(pa + 8*i + 16);
+        uint64_t x0 = r0 & mask48;
+        uint64_t x1 = r1 & mask48;
+        uint64_t x2 = r2 & mask48;
+        uint64_t x3 = (r0 >> 48) | ((r1 >> 48) << 16) | ((r2 >> 48) << 32);
 
-        tmp[i - 2] = res[idx] & MASK48;
-        tmp[i]    |= ((res[idx--] >> 48) & 0xFFFFULL) << 16;
-
-        tmp[i - 3] = res[idx] & MASK48;
-        tmp[i]    |= ((res[idx--] >> 48) & 0xFFFFULL);
+        unpack5_base769(a + out, x0);
+        unpack5_base769(a + out + 5, x1);
+        unpack5_base769(a + out + 10, x2);
+        unpack5_base769(a + out + 15, x3);
+        out += 20;
     }
 
+    r75 = load64_le(pa + 600);
+    r76 = 0;
+    memcpy(&r76, pa + 608, 7);
+    unpack5_base769(a + 500, r75 & mask48);
+    unpack5_base769(a + 505, r76 & mask48);
+
+    x = ((r75 >> 48) & 0xFFFFULL) | (((r76 >> 48) & 0xFULL) << 16);
     for(i = 0; i < 2; i++)
     {
-        uint64_t x = tmp[102];
-        uint64_t q = (uint64_t)(((__uint128_t)x * DIV769_M) >> 58);
-        uint64_t r = x - q * 769ULL;
-
-        a[ZEN_N - 2 + i] = (int16_t)r;
-        tmp[102] = q;
-    }
-
-    idx = 0;
-    for(i = 0; i < ZEN_N - 2; i += 5)
-    {
-        uint64_t x, q, r;
-
-        x = tmp[idx];
-
-        q = (uint64_t)(((__uint128_t)x * DIV769_M) >> 58);
-        r = x - q * 769ULL;
-        a[i] = (int16_t)r;
+        q = (uint64_t)(((__uint128_t)x * div769_m) >> 58);
+        a[ZEN_N - 2 + i] = (int16_t)(x - q * 769ULL);
         x = q;
-
-        q = (uint64_t)(((__uint128_t)x * DIV769_M) >> 58);
-        r = x - q * 769ULL;
-        a[i + 1] = (int16_t)r;
-        x = q;
-
-        q = (uint64_t)(((__uint128_t)x * DIV769_M) >> 58);
-        r = x - q * 769ULL;
-        a[i + 2] = (int16_t)r;
-        x = q;
-
-        q = (uint64_t)(((__uint128_t)x * DIV769_M) >> 58);
-        r = x - q * 769ULL;
-        a[i + 3] = (int16_t)r;
-        x = q;
-
-        q = (uint64_t)(((__uint128_t)x * DIV769_M) >> 58);
-        r = x - q * 769ULL;
-        a[i + 4] = (int16_t)r;
-
-        idx++;
     }
 }
 
@@ -1160,7 +1238,8 @@ void poly_ciphertext_pack(uint8_t *pa, const int16_t *a)
         y = _mm256_packus_epi16(x0, x1);
         y = _mm256_permute4x64_epi64(y, 0xD8);
 
-        _mm256_store_si256((__m256i *)(pa + i), y);
+        /* The serialized ciphertext may be an unaligned message slice. */
+        _mm256_storeu_si256((__m256i *)(pa + i), y);
     }
 }
 
@@ -1171,7 +1250,8 @@ void poly_ciphertext_unpack(int16_t *a, const uint8_t *pa)
 
     for(i = 0; i < ZEN_N; i += 32)
     {
-        x = _mm256_load_si256((const __m256i *)(pa + i));
+        /* Only the internal coefficient array requires SIMD alignment. */
+        x = _mm256_loadu_si256((const __m256i *)(pa + i));
 
         y0 = _mm256_cvtepu8_epi16(_mm256_castsi256_si128(x));
         y1 = _mm256_cvtepu8_epi16(_mm256_extracti128_si256(x, 1));

@@ -1213,9 +1213,9 @@ void poly_unpack_lowbits(poly *a, const uint8_t *r) {
  *
  * Arguments:   - poly *c: pointer to output challenge polynomial
  *              - const uint8_t highbits[]: pointer to compressed w
- *              - const uint8_t mu[CRHBYTES]: pointer to message hash (64 bytes)
+ *              - const uint8_t mu[MUBYTES]: pointer to message representative
  **************************************************/
-void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTES], const uint8_t mu[CRHBYTES]) {
+void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTES], const uint8_t mu[MUBYTES]) {
     unsigned int i, b, pos = 0;
     uint8_t buf[XOF256_BLOCKBYTES];
     xof256_state state;
@@ -1223,7 +1223,7 @@ void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTE
     // rho = H(Compresss(w,d), mu)
     xof256_absorbe_twice(&state, highbits,
                          POLYVECK_HIGHBITS_PACKEDBYTES, mu,
-                         CRHBYTES);
+                         MUBYTES);
     xof256_squeezeblocks(buf, 1, &state);
 
     for (i = 0; i < N; ++i)
@@ -1264,7 +1264,7 @@ void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTE
 }
 
 void poly_uniform(poly *a, const uint8_t seed[SEEDBYTES], uint16_t nonce) {
-    unsigned int blocks_numbers = 7;
+    unsigned int blocks_numbers = 9;
 
     unsigned int i, ctr, off = 0;
     unsigned int buflen = blocks_numbers * STREAM128_BLOCKBYTES;
@@ -1277,8 +1277,7 @@ void poly_uniform(poly *a, const uint8_t seed[SEEDBYTES], uint16_t nonce) {
     ctr = rej_uniform(a->coeffs, N, buf, buflen);
 
     while (ctr < N) {
-        off = ((8 * buflen) % Q_BITS + 7) / 8;
-        // off = 1 or 2
+        off = ((8 * buflen) % 16 + 7) / 8;
         for (i = 0; i < off; ++i)
             buf[i] = buf[buflen - off + i];
         
@@ -1302,11 +1301,11 @@ void poly_uniform_4x(poly *a0, poly *a1, poly *a2, poly *a3,
                      const uint8_t seed[SEEDBYTES],
                      uint16_t nonce0, uint16_t nonce1, uint16_t nonce2, uint16_t nonce3)
 {
-    unsigned int blocks_numbers = 7;
+    unsigned int blocks_numbers = 9;
     unsigned int buflen = blocks_numbers * STREAM128_BLOCKBYTES;
     unsigned int ctr0, ctr1, ctr2, ctr3;
 
-    __attribute__((aligned(32))) uint8_t buf[4][7 * STREAM128_BLOCKBYTES + STREAM128_BLOCKBYTES];
+    __attribute__((aligned(32))) uint8_t buf[4][9 * STREAM128_BLOCKBYTES + STREAM128_BLOCKBYTES];
 
     keccakx4_state state;
     __m256i f;
@@ -1371,12 +1370,12 @@ void poly_ternary_p(poly *a, const uint8_t seed[CRHBYTES], uint16_t nonce) {
     unsigned int blocks_numbers = 3;
     // (N * 13 / 3 * 8) + STREAM256_BLOCKBYTES - 1) / STREAM256_BLOCKBYTES
 #elif DARTS_MODE == 256
-    // Pr[X = 1] = Pr[X = -1] = 0.2, Pr[X = 0] = 0.6
+    // Pr[X = 1] = Pr[X = -1] = 0.3125, Pr[X = 0] = 0.375
     unsigned int blocks_numbers = 2;
-    // (N * 13 / 3 * 8) + STREAM256_BLOCKBYTES - 1) / STREAM256_BLOCKBYTES
+    // ((N * 4 / 8) + STREAM256_BLOCKBYTES - 1) / STREAM256_BLOCKBYTES
 #elif DARTS_MODE == 512
-    // Pr[X = 1] = Pr[X = -1] = 0.15, Pr[X = 0] = 0.7
-    unsigned int blocks_numbers = 4;
+    // Pr[X = 1] = Pr[X = -1] = 0.2, Pr[X = 0] = 0.6
+    unsigned int blocks_numbers = 5;
     // (N * 13 / 3 * 8) + STREAM256_BLOCKBYTES - 1) / STREAM256_BLOCKBYTES
 #endif
 

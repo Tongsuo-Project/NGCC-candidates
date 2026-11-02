@@ -51,11 +51,14 @@ int main()
 	{
 		memcpy(nonce + 4 * i, "seed", 4);
 	}
-	init_random_number(&drng_seed, nonce, SEED_LEN_BYTES);
-    get_random_number(&drng_seed, seed, SEED_LEN_BYTES*8);
+	if (init_random_number(&drng_seed, nonce, SEED_LEN_BYTES) != 0)
+	    return EXIT_FAILURE;
+    if (get_random_number(&drng_seed, seed, SEED_LEN_BYTES*8) != 0)
+        return EXIT_FAILURE;
 
     alg_nonce = 0;
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt_mq(ap);
     for(i = 0; i < NTESTS; i++) 
     {
@@ -64,7 +67,8 @@ int main()
     }
     print_results("check_poly_inv_Zq: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
@@ -72,7 +76,8 @@ int main()
     }
     print_results("check_poly_inv_Z2: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < ZEN_N4; i++)
     {
         ap[i] = (ap[i] & 1) ^ (ap[i + ZEN_N4] & 1) ^ (ap[i + 2*ZEN_N4] & 1) ^ (ap[i + 3*ZEN_N4] & 1);
@@ -87,18 +92,21 @@ int main()
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
-        poly_generate_gf(ap, seed, alg_nonce++);
+        if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+            return EXIT_FAILURE;
     }
     print_results("poly_generate_gf: ", t, NTESTS);
 
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
-        poly_generate_se(ap, seed, alg_nonce++);
+        if (poly_generate_se(ap, seed, alg_nonce++) != 0)
+            return EXIT_FAILURE;
     }
     print_results("poly_generate_se: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt_mq(ap);
     for(i = 0; i < NTESTS; i++) 
     {
@@ -114,8 +122,10 @@ int main()
     }
     print_results("poly_secretkey_unpack: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
-    poly_generate_gf(bp, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
+    if (poly_generate_gf(bp, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt(ap);
     poly_ntt(bp);
     poly_baseinv_ntt(cp, ap);
@@ -134,7 +144,8 @@ int main()
     }
     print_results("poly_publickey_unpack: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt_mq(ap);
     poly_compress(ap);
     for(i = 0; i < NTESTS; i++) 
@@ -151,7 +162,8 @@ int main()
     }
     print_results("poly_ciphertext_unpack: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt_mq(ap);
     for(i = 0; i < NTESTS; i++) 
     {
@@ -167,7 +179,8 @@ int main()
     }
     print_results("poly_decompress: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
@@ -175,7 +188,8 @@ int main()
     }
     print_results("poly_ntt: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
@@ -183,8 +197,10 @@ int main()
     }
     print_results("poly_ntt_mq: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
-    poly_generate_gf(bp, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
+    if (poly_generate_gf(bp, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt(ap);
     poly_ntt(bp);
     poly_basemul_ntt(cp, ap, bp);
@@ -195,8 +211,10 @@ int main()
     }
     print_results("poly_intt: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
-    poly_generate_gf(bp, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
+    if (poly_generate_gf(bp, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt(ap);
     poly_ntt(bp);
     for(i = 0; i < NTESTS; i++) 
@@ -206,8 +224,10 @@ int main()
     }
     print_results("poly_basemul_ntt: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
-    poly_generate_gf(bp, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
+    if (poly_generate_gf(bp, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt(ap);
     poly_ntt(bp);
     for(i = 0; i < NTESTS; i++) 
@@ -217,7 +237,8 @@ int main()
     }
     print_results("poly_basemul_ntt_mq: ", t, NTESTS);
 
-    poly_generate_gf(ap, seed, alg_nonce++);
+    if (poly_generate_gf(ap, seed, alg_nonce++) != 0)
+        return EXIT_FAILURE;
     poly_ntt(ap);
     for(i = 0; i < NTESTS; i++) 
     {
@@ -229,22 +250,29 @@ int main()
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
-        pke_keygen(pk, sk);
+        if (pke_keygen(pk, sk) != 0)
+            return EXIT_FAILURE;
     }
     print_results("pke_keygen: ", t, NTESTS);
 
-    pke_keygen(pk, sk);
-    get_random_number(&drng_seed, seed, SEED_LEN_BYTES*8);
-    get_random_number(&drng_seed, m, ZEN_INDCPA_MSG_LEN_BYTES*8);
+    if (pke_keygen(pk, sk) != 0)
+        return EXIT_FAILURE;
+    if (get_random_number(&drng_seed, seed, SEED_LEN_BYTES*8) != 0)
+        return EXIT_FAILURE;
+    if (get_random_number(&drng_seed, m, ZEN_INDCPA_MSG_LEN_BYTES*8) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
-        pke_enc(pk, m, seed, ct);
+        if (pke_enc(pk, m, seed, ct) != 0)
+            return EXIT_FAILURE;
     }
     print_results("pke_enc: ", t, NTESTS);
 
-    pke_keygen(pk, sk);
-    pke_enc(pk, m, seed, ct);
+    if (pke_keygen(pk, sk) != 0)
+        return EXIT_FAILURE;
+    if (pke_enc(pk, m, seed, ct) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
@@ -255,24 +283,30 @@ int main()
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
-        kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes);
+        if (kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes) != 0)
+            return EXIT_FAILURE;
     }
     print_results("kem_keygen: ", t, NTESTS);
 
-    kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes);
+    if (kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
-	    kem_enc(pk, pk_len_bytes, ss, &ss_len_bytes, ct, &ct_len_bytes);
+	    if (kem_enc(pk, pk_len_bytes, ss, &ss_len_bytes, ct, &ct_len_bytes) != 0)
+	        return EXIT_FAILURE;
     }
     print_results("kem_enc: ", t, NTESTS);
 
-    kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes);
-    kem_enc(pk, pk_len_bytes, ss, &ss_len_bytes, ct, &ct_len_bytes);
+    if (kem_keygen(pk, &pk_len_bytes, sk, &sk_len_bytes) != 0)
+        return EXIT_FAILURE;
+    if (kem_enc(pk, pk_len_bytes, ss, &ss_len_bytes, ct, &ct_len_bytes) != 0)
+        return EXIT_FAILURE;
     for(i = 0; i < NTESTS; i++) 
     {
         t[i] = cpucycles();
-	    kem_dec(sk, sk_len_bytes, ct, ct_len_bytes, ss1, &ss_len_bytes);
+	    if (kem_dec(sk, sk_len_bytes, ct, ct_len_bytes, ss1, &ss_len_bytes) != 0)
+	        return EXIT_FAILURE;
     }
     print_results("kem_dec: ", t, NTESTS);
 

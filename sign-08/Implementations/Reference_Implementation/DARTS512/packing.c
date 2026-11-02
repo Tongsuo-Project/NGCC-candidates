@@ -218,6 +218,10 @@ int unpack_sig(poly *c, polyvecl *lowbits_z1, polyvecl *highbits_z1, polyveck *h
     
     unsigned int i;
     uint16_t size_enc_hb_z1, size_enc_h;
+    poly reconstructed, canonical;
+#if POLY_LOWBITS_PACKEDBYTES != N
+    uint8_t canonical_lowbits[L * POLY_LOWBITS_PACKEDBYTES];
+#endif
 
     // 解码 challenge 多项式 c
     for (i = 0; i < N; i++) {
@@ -225,8 +229,14 @@ int unpack_sig(poly *c, polyvecl *lowbits_z1, polyvecl *highbits_z1, polyveck *h
     }
     sig += N / 8;
 
-    // 解码 LowBits(z1)
+    // Decode LowBits(z1) and reject non-canonical base-17 encodings.
     polyvecl_unpack_lowbits(lowbits_z1, sig);
+#if POLY_LOWBITS_PACKEDBYTES != N
+    polyvecl_pack_lowbits(canonical_lowbits, lowbits_z1);
+    if (memcmp(canonical_lowbits, sig, sizeof canonical_lowbits) != 0) {
+        return 1;
+    }
+#endif
     sig += L * POLY_LOWBITS_PACKEDBYTES;
 
     size_enc_hb_z1 = sig[0] + BASE_ENC_HB_Z1;
@@ -239,6 +249,23 @@ int unpack_sig(poly *c, polyvecl *lowbits_z1, polyvecl *highbits_z1, polyveck *h
 
     if (decode_hb_z1(&highbits_z1->vec[0].coeffs[0], sig, size_enc_hb_z1)) {
         return 1; // 解码失败
+    }
+
+    // Reject non-canonical LowBits/HighBits decompositions of z1.
+    for (i = 0; i < L; ++i) {
+        poly_compose(&reconstructed, &lowbits_z1->vec[i],
+                     &highbits_z1->vec[i]);
+        poly_freeze(&reconstructed);
+
+        poly_compress(&canonical, &reconstructed);
+        if (!poly_equal(&canonical, &highbits_z1->vec[i])) {
+            return 1;
+        }
+
+        poly_lowbits(&canonical, &reconstructed);
+        if (!poly_equal(&canonical, &lowbits_z1->vec[i])) {
+            return 1;
+        }
     }
 
     sig += size_enc_hb_z1;

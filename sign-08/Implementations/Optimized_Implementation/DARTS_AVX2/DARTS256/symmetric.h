@@ -51,7 +51,7 @@ void sm3_shake256(uint8_t *out, size_t outlen,
 // Compatibility function wrappers for stream128 (STREAM128_BLOCKBYTES = 128)
 static inline void stream128_init(stream128_state *state,
                                   const uint8_t *seed, uint16_t nonce) {
-    sm3_xof_stream_init(state, seed, 32, nonce);
+    sm3_xof_stream_init(state, seed, SEEDBYTES, nonce);
 }
 
 static inline void stream128_squeezeblocks(uint8_t *out, size_t nblocks,
@@ -62,7 +62,7 @@ static inline void stream128_squeezeblocks(uint8_t *out, size_t nblocks,
 // Compatibility function wrappers for stream256 (STREAM256_BLOCKBYTES = 128)
 static inline void stream256_init(stream256_state *state,
                                   const uint8_t *seed, uint16_t nonce) {
-    sm3_xof_stream_init(state, seed, 32, nonce);
+    sm3_xof_stream_init(state, seed, CRHBYTES, nonce);
 }
 
 static inline void stream256_squeezeblocks(uint8_t *out, size_t nblocks,

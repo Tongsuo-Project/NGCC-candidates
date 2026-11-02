@@ -33,7 +33,9 @@ other purposes.
 #define FF2(x, y, z) (((x) & (y)) | ((x) & (z)) | ((y) & (z)))
 #define GG1(x, y, z) ((x) ^ (y) ^ (z))
 #define GG2(x, y, z) ((((y) ^ (z)) & (x)) ^ (z))
-#define L_SHIFT(a, n) ((a) << (n) | ((a) & 0xFFFFFFFF) >> (32 - (n)))
+#define L_SHIFT(a, n) \
+    (((unsigned int)(a) << ((unsigned int)(n) & 31U)) | \
+     ((unsigned int)(a) >> ((32U - ((unsigned int)(n) & 31U)) & 31U)))
 #define P0(x) ((x) ^ L_SHIFT((x), 9) ^ L_SHIFT((x), 17))
 #define P1(x) ((x) ^ L_SHIFT((x), 15) ^ L_SHIFT((x), 23))
 #define PUT32(a, b) ((a)[0] = (unsigned char)((b) >> 24), \

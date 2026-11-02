@@ -1,6 +1,6 @@
 CC ?= /usr/bin/cc
 ARCH ?= armv8
-DARTS_MODE ?= 512
+DARTS_MODE ?= 256
 CFLAGS += -Wall -Wextra -Wpedantic -Wmissing-prototypes -Wredundant-decls \
   -Wshadow -Wpointer-arith -O3 -std=c99 -DDARTS_MODE=$(DARTS_MODE) \
   -fcommon

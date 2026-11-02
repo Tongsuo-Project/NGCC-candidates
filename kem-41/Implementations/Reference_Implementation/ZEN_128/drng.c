@@ -249,12 +249,22 @@ static int SM3_DRNG_Instantiate(DRNG_ctx *drng, const unsigned char *nonce, unsi
     }
     memset(seed_material, 0, MAX_INT(nonce_len_bytes, SEEDLEN));
     memcpy(seed_material, nonce, nonce_len_bytes);
-    SM3_df(seed_material, nonce_len_bytes);
+    if (SM3_df(seed_material, nonce_len_bytes) != 0)
+    {
+        free(seed_material);
+        memset(drng, 0, sizeof(*drng));
+        return DRNG_MEMORY_ALLOCATION_FAILED;
+    }
     memcpy(seed, seed_material, sizeof(seed));
     memcpy(drng->V, seed, sizeof(drng->V));
     padded_V[0] = 0x00;
     memcpy(padded_V + 1, drng->V, sizeof(drng->V));
-    SM3_df(padded_V, sizeof(padded_V));
+    if (SM3_df(padded_V, sizeof(padded_V)) != 0)
+    {
+        free(seed_material);
+        memset(drng, 0, sizeof(*drng));
+        return DRNG_MEMORY_ALLOCATION_FAILED;
+    }
     memcpy(drng->C, padded_V, sizeof(drng->C));
     inc_Big_Number(drng->reseed_counter, SEEDLEN);
 

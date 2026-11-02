@@ -862,16 +862,16 @@ void poly_unpack_lowbits(poly *r, const uint8_t *a) {
  *
  * Arguments:   - poly *c: pointer to output challenge polynomial
  *              - const uint8_t highbits[]: pointer to compressed w
- *              - const uint8_t mu[CRHBYTES]: pointer to message hash (64 bytes)
+ *              - const uint8_t mu[MUBYTES]: pointer to message representative
  **************************************************/
-void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTES], const uint8_t mu[CRHBYTES]) {
+void poly_challenge(poly *c, const uint8_t highbits[POLYVECK_HIGHBITS_PACKEDBYTES], const uint8_t mu[MUBYTES]) {
     unsigned int i, b, pos = 0;
     uint8_t buf[SM3_XOF_BLOCKBYTES];
     sm3_xof_state state;
 
     sm3_xof_absorb_twice(&state, highbits,
                          POLYVECK_HIGHBITS_PACKEDBYTES, mu,
-                         CRHBYTES);
+                         MUBYTES);
     sm3_xof_squeezeblocks(buf, 1, &state);
 
     for (i = 0; i < N; ++i)

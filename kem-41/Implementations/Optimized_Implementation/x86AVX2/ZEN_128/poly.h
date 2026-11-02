@@ -46,6 +46,8 @@ extern "C"
     /// @param[out] res Base address of output binary polynomial coefficient array
     /// @return None
     void mul_in_R2_256(int16_t *a, int16_t *b, int16_t *res);
+    void mul2_in_R2_256(const int16_t *a0, const int16_t *a1,
+                        const int16_t *b, int16_t *res0, int16_t *res1);
 
     /// @brief Compute the inverse of a binary polynomial using the fast inversion algorithm
     /// @param[out] f_inv Base address of output inverse polynomial coefficient array
@@ -57,29 +59,29 @@ extern "C"
     /// @param[out] a Base address of output polynomial coefficient array
     /// @param[in] seed Base address of input seed byte array
     /// @param[in] nonce Domain-separation nonce used for pseudorandom generation
-    /// @return None
-    void poly_generate_g(int16_t *a, const uint8_t *seed, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int poly_generate_g(int16_t *a, const uint8_t *seed, uint8_t nonce);
 
     /// @brief Generate a polynomial f from a seed and nonce
     /// @param[out] a Base address of output polynomial coefficient array
     /// @param[in] seed Base address of input seed byte array
     /// @param[in] nonce Domain-separation nonce used for pseudorandom generation
-    /// @return None
-    void poly_generate_f(int16_t *a, const uint8_t *seed, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int poly_generate_f(int16_t *a, const uint8_t *seed, uint8_t nonce);
 
     /// @brief Generate a polynomial s from a seed and nonce
     /// @param[out] a Base address of output polynomial coefficient array
     /// @param[in] seed Base address of input seed byte array
     /// @param[in] nonce Domain-separation nonce used for pseudorandom generation
-    /// @return None
-    void poly_generate_s(int16_t *a, const uint8_t *seed, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int poly_generate_s(int16_t *a, const uint8_t *seed, uint8_t nonce);
 
     /// @brief Generate an error polynomial e from a seed and nonce
     /// @param[out] a Base address of output polynomial coefficient array
     /// @param[in] seed Base address of input seed byte array
     /// @param[in] nonce Domain-separation nonce used for pseudorandom generation
-    /// @return None
-    void poly_generate_e(int16_t *a, const uint8_t *seed, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int poly_generate_e(int16_t *a, const uint8_t *seed, uint8_t nonce);
 
     /// @brief Pack a binary polynomial coefficient array into a byte array using AVX2
     /// @param[out] pa Base address of output packed byte array
@@ -87,6 +89,8 @@ extern "C"
     /// @param[in] n Number of binary coefficients to be packed
     /// @return None
     void poly_bit2byte_pack(uint8_t *pa, const int16_t *a, const unsigned int n);
+    void poly_xor_bit2byte_pack(uint8_t *pa, const int16_t *a,
+                                const int16_t *b, const unsigned int n);
 
     /// @brief Unpack a byte array into a binary polynomial coefficient array using AVX2
     /// @param[out] a Base address of output binary polynomial coefficient array
@@ -119,6 +123,7 @@ extern "C"
     /// @return None
     void poly_publickey_unpack(int16_t *a, const uint8_t *pa);
 
+    /* Serialized byte arrays need no alignment; coefficient arrays remain 32-byte aligned. */
     /// @brief Pack a ciphertext polynomial coefficient array into a byte array using AVX2
     /// @param[out] pa Base address of output packed ciphertext byte array
     /// @param[in] a Base address of input ciphertext polynomial coefficient array

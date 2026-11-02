@@ -468,7 +468,12 @@ static void _complex_mul(complex_fp32_16 *r, const complex_fp32_16 x, const comp
  **************************************************/
 int64_t complex_fp_sqabs(complex_fp32_16 x)
 {
-    return _mulrnd16(x.real, x.real) + _mulrnd16(x.imag, x.imag);
+    int64_t real = x.real;
+    int64_t imag = x.imag;
+    int64_t real_sq = (real * real + ((int64_t)1 << 15)) >> 16;
+    int64_t imag_sq = (imag * imag + ((int64_t)1 << 15)) >> 16;
+
+    return real_sq + imag_sq;
 }
 
 /*************************************************

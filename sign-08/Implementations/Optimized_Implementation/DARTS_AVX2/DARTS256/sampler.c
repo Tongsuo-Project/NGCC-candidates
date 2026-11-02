@@ -1,5 +1,6 @@
 #include "sampler.h"
 #include "fixpoint.h"
+#include "gauss_q80_constants.h"
 #include "symmetric.h"
 #include <stdint.h>
 
@@ -219,98 +220,96 @@ unsigned int rej_p(int32_t *a, unsigned int len,
     return ctr;
 }
 
-
-
-
-
+/* Q63 one-sided degree-12 approximation of exp(-x). */
 static uint64_t approx_exp(const uint64_t x) {
-    int64_t result;
-    result = -0x0000B6C6340925AELL;
-    result = ((smulh48(result, x) + (1LL << 2)) >> 3) + 0x0000B4BD4DF85227LL;
-    result = ((smulh48(result, x) + (1LL << 2)) >> 3) - 0x0000887F727491E2LL;
-    result = ((smulh48(result, x) + (1LL << 1)) >> 2) + 0x0000AAAA643C7E8DLL;
-    result = ((smulh48(result, x) + (1LL << 1)) >> 2) - 0x0000AAAAA98179E6LL;
-    result = ((smulh48(result, x) + 1LL) >> 1) + 0x0000FFFFFFFB2E7ALL;
-    result = ((smulh48(result, x) + 1LL) >> 1) - 0x0000FFFFFFFFF85FLL;
-    result = ((smulh48(result, x))) + 0x0000FFFFFFFFFFFCLL;
-    return result;
+    int64_t result = EXP_C12;
+    uint64_t threshold;
+
+    result = smulh63_ceil(result, x) + EXP_C11;
+    result = smulh63_ceil(result, x) + EXP_C10;
+    result = smulh63_ceil(result, x) + EXP_C9;
+    result = smulh63_ceil(result, x) + EXP_C8;
+    result = smulh63_ceil(result, x) + EXP_C7;
+    result = smulh63_ceil(result, x) + EXP_C6;
+    result = smulh63_ceil(result, x) + EXP_C5;
+    result = smulh63_ceil(result, x) + EXP_C4;
+    result = smulh63_ceil(result, x) + EXP_C3;
+    result = smulh63_ceil(result, x) + EXP_C2;
+    result = smulh63_ceil(result, x) + EXP_C1;
+    result = smulh63_ceil(result, x);
+
+    /* Unsigned addition gives EXP_C0 + result even when result is negative. */
+    threshold = EXP_C0 + (uint64_t)result;
+    if (threshold > (UINT64_C(1) << EXP_FRAC_BITS))
+        threshold = UINT64_C(1) << EXP_FRAC_BITS;
+    return threshold;
 }
 
-#define CDTLEN 64
-static const uint32_t CDT[CDTLEN] = {
- 3266,  6520,  9748, 12938, 16079, 19159, 22168, 25096,
-27934, 30674, 33309, 35833, 38241, 40531, 42698, 44742,
-46663, 48460, 50135, 51690, 53128, 54454, 55670, 56781,
-57794, 58712, 59541, 60287, 60956, 61554, 62085, 62556,
-62972, 63337, 63657, 63936, 64178, 64388, 64569, 64724,
-64857, 64970, 65066, 65148, 65216, 65273, 65321, 65361,
-65394, 65422, 65444, 65463, 65478, 65490, 65500, 65508,
-65514, 65519, 65523, 65527, 65529, 65531, 65533, 65534
-};
-
-
-static uint64_t sample_gauss16(const uint64_t rand16) {
+/* Constant-time inverse-CDF sampling from the generated 112-bit CDT. */
+static uint64_t sample_gauss112(const uint64_t rand_lo,
+                                const uint64_t rand_hi) {
     unsigned int i;
     uint64_t r = 0;
+
     for (i = 0; i < CDTLEN; i++) {
-        r += (((uint64_t)CDT[i] - rand16) >> 63) & 1;
+        const uint64_t borrow = rand_lo > CDT112_LO[i];
+        const uint64_t hi_diff = CDT112_HI[i] - rand_hi - borrow;
+        r += hi_diff >> 63;
     }
     return r;
 }
 
-#define GAUSS_RAND (72 + 16 + 48)
-#define GAUSS_RAND_BYTES ((GAUSS_RAND + 7) / 8)
+static uint64_t load64_le(const uint8_t src[8]) {
+    return (uint64_t)src[0] | ((uint64_t)src[1] << 8) |
+           ((uint64_t)src[2] << 16) | ((uint64_t)src[3] << 24) |
+           ((uint64_t)src[4] << 32) | ((uint64_t)src[5] << 40) |
+           ((uint64_t)src[6] << 48) | ((uint64_t)src[7] << 56);
+}
+
+#define GAUSS_RAND (72 + CDT_BITS + 64)
+#define GAUSS_RAND_BYTES ((GAUSS_RAND + 7) / 8) /* 31 */
 static int sample_gauss_sigma76(uint64_t *r, fp96_76 *sqr,
                                 const uint8_t rand[GAUSS_RAND_BYTES]) {
-    const uint64_t rand_gauss16 = rand[0] | (((uint64_t) rand[1]) << 8); 
-    const uint64_t rand_rej = rand[2] | (((uint64_t) rand[3]) << 8) | (((uint64_t) rand[4]) << 16) | (((uint64_t) rand[5]) << 24)
-     | (((uint64_t) rand[6]) << 32) | (((uint64_t) rand[7]) << 40);
-    uint64_t x, exp_in;
+    const uint64_t rand_gauss_lo = load64_le(rand);
+    const uint64_t rand_gauss_hi = load64_le(rand + 8) &
+                                   ((UINT64_C(1) << 48) - 1);
+    const uint64_t rejection_word = load64_le(rand + 14);
+    const uint64_t rand_rej = rejection_word & INT64_MAX;
+    const uint64_t zero_coin = rejection_word >> 63;
+    uint64_t x, exp_in, exp_threshold, diff_hi;
     fp96_76 y;
 
     // sample x
-    x = sample_gauss16(rand_gauss16);
+    x = sample_gauss112(rand_gauss_lo, rand_gauss_hi);
 
     // y := append x to y
     // leave 16 bit for carries
-    y.limb48[0] = rand[8] | ((uint64_t)rand[9] << 8) |
-                  ((uint64_t)rand[10] << 16) | ((uint64_t)rand[11] << 24) |
-                  ((uint64_t)rand[12] << 32) | ((uint64_t)rand[13] << 40);
-    y.limb48[1] =
-        rand[14] | ((uint64_t)rand[15] << 8) | ((uint64_t)rand[16] << 16) |
-        (x << 24);
+    y.limb48[0] = load64_le(rand + 22) & ((UINT64_C(1) << 48) - 1);
+    y.limb48[1] = rand[28] | ((uint64_t)rand[29] << 8) |
+                  ((uint64_t)rand[30] << 16) | (x << 24);
 
-    // r := round y 
-    *r = (y.limb48[0] >> 15) ^ (y.limb48[1] << 33);
-    *r += 1; // rounding
-    *r >>= 1;
+    /* Round y without losing the high bit when x >= 128. */
+    *r = ((y.limb48[0] >> 15) + 1) >> 1;
+    *r += y.limb48[1] << 32;
 
     // sqr := y*y
     fixpoint_square(sqr, &y);
 
-    // sqr[1] = y^2 >> (76+48)                // 34 bit
-    // sqr[0] = (y^2 >> 76) & ((1UL<<48)-1)   // 48 bit
-    // exp_in := sqr - ((x*x) << 68)
-    exp_in = sqr->limb48[1] - ((x*x) << (68 - 48));
-    exp_in <<= 20;
-    exp_in |= sqr->limb48[0] >> 28;
-    exp_in += 1; // rounding
-    exp_in >>= 1;
+    /* If D=(sqr-x^2*2^68), Q63 exp_in is round(D/2^14). */
+    diff_hi = sqr->limb48[1] - ((x * x) << 20);
+    exp_in = (diff_hi << 34) | (sqr->limb48[0] >> 14);
+    exp_in += (sqr->limb48[0] >> 13) & 1;
 
-    return ((((int64_t)(rand_rej ^
-                        (rand_rej & 1)) // set lowest bit to zero in order to
-                                        // use it for rejection if sample==0
-              - (int64_t)approx_exp(exp_in)) >>
-             63) // reject with prob 1-approx_exp(exp_in)
-            & (((*r | -*r) >> 63) | rand_rej)) &
-           1; // if the sample is zero, clear the return value with prob 1/2
+    exp_threshold = approx_exp(exp_in);
+    return (int)(((rand_rej - exp_threshold) >> 63) &
+                 (((*r | (UINT64_C(0) - *r)) >> 63) | zero_coin));
 }
 
 int sample_gauss(uint64_t *r, fp96_76 *sqsum, const uint8_t *buf, const size_t buflen, const size_t len, const int dont_write_last)
 {
     const uint8_t *pos = buf;
     fp96_76 sqr;
-    size_t bytecnt = buflen, coefcnt = 0, cnt = 0;
+    size_t bytecnt = buflen, coefcnt = 0;
     int accepted;
     uint64_t dummy;
     
@@ -326,7 +325,6 @@ int sample_gauss(uint64_t *r, fp96_76 *sqsum, const uint8_t *buf, const size_t b
         } else {
           accepted = sample_gauss_sigma76(&r[coefcnt], &sqr, pos);
         }
-        cnt += 1;
         coefcnt += accepted;
         pos += GAUSS_RAND_BYTES;
         bytecnt -= GAUSS_RAND_BYTES;
@@ -347,7 +345,7 @@ int sample_gauss(uint64_t *r, fp96_76 *sqsum, const uint8_t *buf, const size_t b
  *
  * Description: Sample len coefficients from discrete Gaussian with
  *              standard deviation sigma=76/2^13
- *              using output of a SHAKE256(seed|nonce).
+ *              using output of SHAKE256(seed|nonce).
  *              Also compute the squared norm of the sampled coefficients.
  *
  * Arguments:   - uint64_t *r: pointer to output array of sampled coefficients

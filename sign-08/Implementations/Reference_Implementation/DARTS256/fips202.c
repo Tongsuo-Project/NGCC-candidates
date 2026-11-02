@@ -361,7 +361,9 @@ static unsigned int keccak_absorb(uint64_t s[25], unsigned int pos,
                                   size_t inlen) {
     unsigned int i;
 
-    while (pos + inlen >= r) {
+    /* Use subtraction in the bound so a very large inlen cannot wrap
+     * pos + inlen and silently skip input bytes. */
+    while (inlen >= (size_t)(r - pos)) {
         for (i = pos; i < r; ++i)
             s[i / 8] ^= (uint64_t)*in++ << 8 * (i % 8);
         inlen -= r - pos;
@@ -369,10 +371,10 @@ static unsigned int keccak_absorb(uint64_t s[25], unsigned int pos,
         pos = 0;
     }
 
-    for (i = pos; i < pos + inlen; ++i)
-        s[i / 8] ^= (uint64_t)*in++ << 8 * (i % 8);
+    for (i = 0; i < inlen; ++i)
+        s[(pos + i) / 8] ^= (uint64_t)*in++ << 8 * ((pos + i) % 8);
 
-    return i;
+    return pos + i;
 }
 
 /*************************************************
@@ -409,17 +411,23 @@ static void keccak_finalize(uint64_t s[25], unsigned int pos, unsigned int r,
  **************************************************/
 static unsigned int keccak_squeeze(uint8_t *out, size_t outlen, uint64_t s[25],
                                    unsigned int pos, unsigned int r) {
-    unsigned int i;
-
     while (outlen) {
+        size_t take;
+
         if (pos == r) {
             KeccakF1600_StatePermute(s);
             pos = 0;
         }
-        for (i = pos; i < r && i < pos + outlen; ++i)
-            *out++ = s[i / 8] >> 8 * (i % 8);
-        outlen -= i - pos;
-        pos = i;
+
+        take = r - pos;
+        if (take > outlen)
+            take = outlen;
+        for (size_t i = 0; i < take; ++i)
+            out[i] = s[(pos + i) / 8] >> 8 * ((pos + i) % 8);
+
+        out += take;
+        outlen -= take;
+        pos += (unsigned int)take;
     }
 
     return pos;

@@ -15,4 +15,8 @@ unsigned int rej_p(int32_t *a, unsigned int len, const uint8_t *buf, unsigned in
 #define sample_gauss_N DARTS_NAMESPACE(sample_gauss_N)
 void sample_gauss_N(uint64_t *r, uint8_t *signs, fp96_76 *sqsum, const uint8_t seed[CRHBYTES], const uint16_t nonce, const size_t len);
 
+#define sample_gauss_sigma76_finish DARTS_NAMESPACE(sample_gauss_sigma76_finish)
+int sample_gauss_sigma76_finish(uint64_t *r, fp96_76 *sqr,
+                                const uint8_t rand[31], uint64_t x);
+
 #endif

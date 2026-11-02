@@ -8,6 +8,16 @@
 #include "consts.h"
 #include "reduce_avx.h"
 #include <immintrin.h>
+
+static inline __m256i freeze_centered_avx2(__m256i a) {
+    const __m256i v_q = _mm256_load_si256((const __m256i *)&qdata[_8XQ]);
+    const __m256i v_half_q = _mm256_set1_epi32(Q >> 1);
+    __m256i t = freeze_avx2(a);
+    __m256i gt_half = _mm256_cmpgt_epi32(t, v_half_q);
+
+    return _mm256_sub_epi32(t, _mm256_and_si256(gt_half, v_q));
+}
+
 /**************************************************************/
 /************ Vectors of polynomials of length K **************/
 /**************************************************************/
@@ -299,7 +309,8 @@ void polyveck_caddq(polyveck *r) {
 /*************************************************
  * Name:        polyveck_sqnorm2
  *
- * Description: Compute squared l2-norm of vector of polynomials of length K
+ * Description: Compute squared l2-norm of the centered representatives of a
+ *              vector of polynomials of length K
  *
  * Arguments:   - const polyveck *r: pointer to input vector
  *
@@ -312,6 +323,7 @@ uint64_t polyveck_sqnorm2(const polyveck *r) {
 
     for (i = 0; i < K * N; i += 8) {
         __m256i v = _mm256_loadu_si256((__m256i *)&r->vec[0].coeffs[i]);
+        v = freeze_centered_avx2(v);
         __m256i sq_even = _mm256_mul_epi32(v, v);
         __m256i v_odd = _mm256_srli_epi64(v, 32);
         __m256i sq_odd = _mm256_mul_epi32(v_odd, v_odd);
@@ -647,7 +659,8 @@ void polyvecl_cneg(polyvecl *v, const uint8_t b) {
 /*************************************************
  * Name:        polyvecl_sqnorm2
  *
- * Description: Compute squared l2-norm of vector of polynomials of length L
+ * Description: Compute squared l2-norm of the centered representatives of a
+ *              vector of polynomials of length L
  *
  * Arguments:   - const polyvecl *r: pointer to input vector
  *
@@ -662,6 +675,7 @@ uint64_t polyvecl_sqnorm2(const polyvecl *r) {
         for (j = 0; j < N; j += 8) {
 
             __m256i vr = _mm256_loadu_si256((__m256i *)&r->vec[i].coeffs[j]);
+            vr = freeze_centered_avx2(vr);
             __m256i v_even_sq = _mm256_mul_epi32(vr, vr);
             __m256i vr_odd = _mm256_shuffle_epi32(vr, 0xF5); 
             __m256i v_odd_sq = _mm256_mul_epi32(vr_odd, vr_odd);
@@ -724,26 +738,35 @@ void polyvecl_1_basemul_acc_montgomery(poly *r, const polyvecl_1 *a, const polyv
 /*************************************************
  * Name:        minmax
  *
- * Description: Safely swap two 32-bit integers such that the first becomes
+ * Description: Safely swap two 64-bit integers such that the first becomes
  *              the minimum and the second becomes the maximum.
  *              Branchless implementation to resist timing attacks.
  *
- * Arguments:   - int32_t *x: pointer to the first integer
+ * Arguments:   - int64_t *x: pointer to the first integer
  *                             (stores the smaller value on return)
- *              - int32_t *y: pointer to the second integer
+ *              - int64_t *y: pointer to the second integer
  *                             (stores the larger value on return)
  **************************************************/
-static inline void minmax(int32_t *x, int32_t *y) // djbsort
+static inline void minmax(int64_t *x, int64_t *y)
 {
-    int32_t a = *x;      
-    int32_t b = *y;     
-    int32_t ab = b ^ a;   
-    int32_t c = b - a;   
-    c ^= ab & (c ^ b);  
-    c >>= 31;              
-    c &= ab;              
-    *x = a ^ c;           
-    *y = b ^ c;          
+    int64_t a = *x;
+    int64_t b = *y;
+    uint64_t mask = 0U - (uint64_t)(a > b);
+    uint64_t delta = ((uint64_t)a ^ (uint64_t)b) & mask;
+
+    *x = (int64_t)((uint64_t)a ^ delta);
+    *y = (int64_t)((uint64_t)b ^ delta);
+}
+
+static inline int64_t complex_fp_sqabs_wide(
+    const poly_complex_fp32_16 *x, size_t index)
+{
+    int64_t real = x->real.coeffs[index];
+    int64_t imag = x->imag.coeffs[index];
+    int64_t real_sq = (real * real + ((int64_t)1 << 15)) >> 16;
+    int64_t imag_sq = (imag * imag + ((int64_t)1 << 15)) >> 16;
+
+    return real_sq + imag_sq;
 }
 
 /*************************************************
@@ -756,78 +779,65 @@ static inline void minmax(int32_t *x, int32_t *y) // djbsort
  *              - const polyveck *e: pointer to error vector
  **************************************************/
 int64_t polyveckl_sqsing_value(const poly *s0, const polyvecl_1 *s1, const polyveck *e) {
-    int32_t res = 0;
+    int64_t res = 0;
     poly_complex_fp32_16 input = {0};
-    int32_t bestm[N / TAU + 1] = {0}, min = 0;
-    union {
-        __m256i vec[N/8];
-        int32_t coeffs[N];
-    } sum = {.coeffs={0}};
+    int64_t sum[N] = {0}, bestm[N / TAU + 1] = {0}, min = 0;
 
     fft_init_and_bitrev(&input, s0);
     fft(&input);
-    // for (size_t j = 0; j < N; ++j) {
-    //     sum[j] = complex_fp_sqabs(input[j]);
-    // }
-    for (size_t j = 0; j < N/8; j++) {
-            complex_fp_sqabs_add(&sum.vec[j], &input.real.vec[j], &input.imag.vec[j]);
+    for (size_t j = 0; j < N; ++j) {
+        sum[j] = complex_fp_sqabs_wide(&input, j);
     }
 
     for (size_t i = 0; i < L-1; ++i) {
         fft_init_and_bitrev(&input, &s1->vec[i]);
         fft(&input);
 
-        // for (size_t j = 0; j < N; ++j) {
-        //     sum[j] += complex_fp_sqabs(input[j]);
-        // }
-        for (size_t j = 0; j < N/8; j++) {
-            complex_fp_sqabs_add(&sum.vec[j], &input.real.vec[j], &input.imag.vec[j]);
-    }
+        for (size_t j = 0; j < N; ++j) {
+            sum[j] += complex_fp_sqabs_wide(&input, j);
+        }
     }
 
     for (size_t i = 0; i < K; ++i) {
         fft_init_and_bitrev(&input, &e->vec[i]);
         fft(&input);
 
-        // for (size_t j = 0; j < N; ++j) {
-        //     sum[j] += complex_fp_sqabs(input[j]);
-        // }
-        for (size_t j = 0; j < N/8; j++) {
-            complex_fp_sqabs_add(&sum.vec[j], &input.real.vec[j], &input.imag.vec[j]);
-    }
+        for (size_t j = 0; j < N; ++j) {
+            sum[j] += complex_fp_sqabs_wide(&input, j);
+        }
     }
 
     // 计算前 N/TAU + 1 个最大值
     for (size_t i = 0; i < N / TAU + 1; ++i) {
-        bestm[i] = sum.coeffs[i];
+        bestm[i] = sum[i];
     }
     for (size_t i = N / TAU + 1; i < N; ++i) {
         for (size_t j = 0; j < N / TAU + 1; ++j) {
-            minmax(&sum.coeffs[i], &bestm[j]);
+            minmax(&sum[i], &bestm[j]);
         }
     }
 
     // 找到 bestm 中的最小值
     min = bestm[0];
     for (size_t i = 1; i < N / TAU + 1; ++i) {
-        int32_t temp = bestm[i];
+        int64_t temp = bestm[i];
         minmax(&min, &temp);
     }
     
     // 计算最终结果
     for (size_t i = 0; i < N / TAU + 1; ++i) {
-        int32_t fac = (min - bestm[i]) >> 31;
+        int64_t fac = -(int64_t)(min < bestm[i]);
         fac = 
             (fac & (TAU)) ^ 
             ((~fac) & (N % TAU));
         
-        bestm[i] = (bestm[i] + (1 << 5)) >> 6;
+        bestm[i] = (bestm[i] + ((int64_t)1 << 5)) >> 6;
 
         bestm[i] *= fac;
         res += bestm[i]; 
     }
 
-    return (res + (1 << 9)) >> 10; // 返回 N(s) 的估计值
+    return (res + ((int64_t)1 << 9)) >> 10; // 返回 N(s) 的估计值
 }
 
 /*************************************************

@@ -5,6 +5,8 @@
 
 #if defined(__aarch64__)
 
+#define CPUCYCLES_UNIT "ARM generic-timer ticks"
+
 static inline uint64_t cpucycles(void) {
     uint64_t result;
 
@@ -15,6 +17,8 @@ static inline uint64_t cpucycles(void) {
 
 #elif defined(USE_RDPMC) && (defined(__x86_64__) || defined(__i386__))
 /* Needs echo 2 > /sys/devices/cpu/rdpmc */
+
+#define CPUCYCLES_UNIT "core cycles"
 
 static inline uint64_t cpucycles(void) {
     const uint32_t ecx = (1U << 30) + 1;
@@ -30,6 +34,8 @@ static inline uint64_t cpucycles(void) {
 
 #elif defined(__x86_64__) || defined(__i386__)
 
+#define CPUCYCLES_UNIT "TSC ticks"
+
 static inline uint64_t cpucycles(void) {
     uint64_t result;
 
@@ -44,6 +50,8 @@ static inline uint64_t cpucycles(void) {
 #else
 
 #include <sys/time.h>
+
+#define CPUCYCLES_UNIT "microseconds"
 
 static inline uint64_t cpucycles(void) {
     struct timeval tv;

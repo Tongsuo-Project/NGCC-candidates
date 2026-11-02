@@ -21,8 +21,8 @@ extern "C"
     /// @param[in] msg_len_bits Input message length in bits
     /// @param[out] output Base address of output pseudorandom byte array
     /// @param[in] nonce Domain-separation nonce appended to the input message
-    /// @return None
-    void zen_pseudoXOF(unsigned long long output_len_bits, const unsigned char *msg, unsigned long long msg_len_bits, unsigned char *output, uint8_t nonce);
+    /// @return 0 on success; nonzero on failure. Do not use output on failure.
+    int zen_pseudoXOF(unsigned long long output_len_bits, const unsigned char *msg, unsigned long long msg_len_bits, unsigned char *output, uint8_t nonce);
 
 
 #ifdef __cplusplus

@@ -1,0 +1,27 @@
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+    set(PARAM_STANDALONE TRUE)
+else()
+    set(PARAM_STANDALONE FALSE)
+endif()
+
+if(PARAM_STANDALONE)
+    cmake_minimum_required(VERSION 3.12)
+    project(NIIKE_lv256 VERSION 1.0 LANGUAGES C ASM)
+    set(CMAKE_C_STANDARD 99)
+endif()
+
+set(COMMON_SRC_DIR ${CMAKE_SOURCE_DIR})
+set(PARAM_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+get_filename_component(SVARIANT ${CMAKE_CURRENT_SOURCE_DIR} NAME)
+string(TOUPPER ${SVARIANT} SVARIANT_UPPER)
+
+if(NOT DEFINED C_OPT_FLAGS)
+    set(C_OPT_FLAGS "")
+endif()
+
+add_subdirectory(common)
+add_subdirectory(precomp)
+add_subdirectory(gf)
+add_subdirectory(ec)
+add_subdirectory(protocols)
+add_subdirectory(ngccapi)
